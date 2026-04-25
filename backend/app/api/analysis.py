@@ -37,7 +37,7 @@ def _decrypt_list(encrypted: str | None) -> list:
 
 # ── POST /analysis/run ────────────────────────────────────────
 
-@router.post("/run", response_model=AnalysisResponse, status_code=200)
+@router.post("/run", response_model=AnalysisResponse, response_model_by_alias=True, status_code=200)
 async def run_analysis(user_id: str = Depends(get_current_user_id)):
     """
     Günde 1 analiz hakkı. Rate limit DB'de kontrol edilir.
@@ -156,7 +156,7 @@ async def run_analysis(user_id: str = Depends(get_current_user_id)):
 
 # ── GET /analysis/latest ──────────────────────────────────────
 
-@router.get("/latest", response_model=AnalysisResponse)
+@router.get("/latest", response_model=AnalysisResponse, response_model_by_alias=True)
 async def get_latest_analysis(user_id: str = Depends(get_current_user_id)):
     """Son analiz sonucunu döndürür. Veri şifreli saklanır, burada çözülür."""
     db = get_supabase()

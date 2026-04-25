@@ -5,7 +5,8 @@ GET    /users/me  - Kullanıcı bilgilerini getir
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Depends
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
+from pydantic.alias_generators import to_camel
 import structlog
 
 from app.api.auth import get_current_user_id
@@ -17,6 +18,7 @@ log = structlog.get_logger()
 
 
 class UserInfo(BaseModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
     analysis_count: int
     last_analysis_at: str | None
     created_at: str
@@ -25,7 +27,7 @@ class UserInfo(BaseModel):
 
 # ── GET /users/me ─────────────────────────────────────────────
 
-@router.get("/me", response_model=UserInfo)
+@router.get("/me", response_model=UserInfo, response_model_by_alias=True)
 async def get_me(user_id: str = Depends(get_current_user_id)):
     db = get_supabase()
 

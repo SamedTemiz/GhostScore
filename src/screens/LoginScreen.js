@@ -122,14 +122,93 @@ function PasswordSheet({ visible, username, onClose, onSubmit, submitting, error
   );
 }
 
+// ── 2FA bottom sheet ──────────────────────────────────────────
+
+function TwoFaSheet({ visible, username, onClose, onSubmit, submitting, error, colors }) {
+  const [code, setCode] = useState('');
+
+  if (!visible) return null;
+
+  return (
+    <Modal visible={visible} transparent animationType="slide">
+      <TouchableOpacity style={styles.sheetOverlay} activeOpacity={1} onPress={onClose} />
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={styles.sheetWrapper}
+      >
+        <View style={[styles.sheet, { backgroundColor: colors.surface }]}>
+          <View style={[styles.sheetHandle, { backgroundColor: colors.border }]} />
+
+          <View style={styles.sheetHeader}>
+            <View style={styles.igIconSmall}>
+              <Ionicons name="shield-checkmark" size={20} color="#fff" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.sheetTitle, { color: colors.textPrimary }]}>İki Faktörlü Doğrulama</Text>
+              <Text style={[styles.sheetSub, { color: colors.textMuted }]}>@{username} için kod gönderildi</Text>
+            </View>
+            <TouchableOpacity onPress={onClose}>
+              <Ionicons name="close" size={22} color={colors.textMuted} />
+            </TouchableOpacity>
+          </View>
+
+          <View style={[styles.trustNote, { backgroundColor: colors.purple + '15' }]}>
+            <Ionicons name="phone-portrait-outline" size={14} color={colors.purple} />
+            <Text style={[styles.trustNoteText, { color: colors.purple }]}>
+              Instagram'ın SMS veya authenticator uygulaması aracılığıyla gönderdiği 6 haneli kodu gir.
+            </Text>
+          </View>
+
+          <View style={[styles.inputWrap, { backgroundColor: colors.background, borderColor: colors.border }]}>
+            <Ionicons name="keypad-outline" size={18} color={colors.textMuted} style={styles.inputIcon} />
+            <TextInput
+              style={[styles.input, { flex: 1, color: colors.textPrimary, fontSize: 22, letterSpacing: 6 }]}
+              placeholder="000000"
+              placeholderTextColor={colors.textMuted}
+              value={code}
+              onChangeText={(t) => setCode(t.replace(/\D/g, '').slice(0, 8))}
+              keyboardType="number-pad"
+              maxLength={8}
+              autoFocus
+              returnKeyType="go"
+              onSubmitEditing={() => code.length >= 6 && onSubmit(code)}
+            />
+          </View>
+
+          {error ? (
+            <View style={styles.errorBox}>
+              <Ionicons name="alert-circle-outline" size={14} color="#FF6B6B" />
+              <Text style={styles.errorText}>{error}</Text>
+            </View>
+          ) : null}
+
+          <TouchableOpacity
+            style={[styles.btn, (code.length < 6 || submitting) && styles.btnDisabled, { backgroundColor: colors.purple }]}
+            onPress={() => onSubmit(code)}
+            disabled={code.length < 6 || submitting}
+            activeOpacity={0.85}
+          >
+            <Text style={[styles.btnText, { color: '#FFF' }]}>
+              {submitting ? 'Doğrulanıyor...' : 'Doğrula →'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+}
+
 // ── Ana ekran ─────────────────────────────────────────────────
 
 export default function LoginScreen({ navigation }) {
   const { colors } = useTheme();
-  const { login, error } = useAuth();
-  const [username, setUsername]       = useState('');
-  const [sheetVisible, setSheet]      = useState(false);
-  const [submitting, setSubmitting]   = useState(false);
+  const { login, verify2fa, error } = useAuth();
+  const [username, setUsername]         = useState('');
+  const [sheetVisible, setSheet]        = useState(false);
+  const [submitting, setSubmitting]     = useState(false);
+  const [twoFaVisible, setTwoFaVisible] = useState(false);
+  const [twoFaIdentifier, setTwoFaId]   = useState('');
+  const [twoFaError, setTwoFaError]     = useState(null);
 
   const handleContinue = () => {
     if (!username.trim()) return;
@@ -143,7 +222,26 @@ export default function LoginScreen({ navigation }) {
       setSheet(false);
       navigation.replace('Analysis');
     } catch (err) {
-      // hata AuthContext error state'ine yazıldı
+      if (err.status === 202) {
+        setSheet(false);
+        setTwoFaId(err.twoFaIdentifier || '');
+        setTwoFaVisible(true);
+      }
+      // diğer hatalar AuthContext error state'ine yazıldı
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleTwoFa = async (code) => {
+    setSubmitting(true);
+    setTwoFaError(null);
+    try {
+      await verify2fa(username.trim(), code, twoFaIdentifier);
+      setTwoFaVisible(false);
+      navigation.replace('Analysis');
+    } catch (err) {
+      setTwoFaError(err.message || 'Kod hatalı. Tekrar dene.');
     } finally {
       setSubmitting(false);
     }
@@ -159,6 +257,15 @@ export default function LoginScreen({ navigation }) {
         onSubmit={handleLogin}
         submitting={submitting}
         error={error}
+        colors={colors}
+      />
+      <TwoFaSheet
+        visible={twoFaVisible}
+        username={username.trim()}
+        onClose={() => setTwoFaVisible(false)}
+        onSubmit={handleTwoFa}
+        submitting={submitting}
+        error={twoFaError}
         colors={colors}
       />
 

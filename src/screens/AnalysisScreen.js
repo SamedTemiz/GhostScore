@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, Animated, StatusBar } from 'react-native';
+import { View, Text, StyleSheet, Animated, StatusBar, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
-import { SPACING } from '../constants/theme';
+import { SPACING, RADIUS } from '../constants/theme';
 
 const ANALYSIS_GHOST = require('../../assets/main/Top_View.png');
 
@@ -19,29 +19,36 @@ const MESSAGES = [
   'Sonuçlar hazırlanıyor',
 ];
 
-const MIN_DURATION = 5000; // ms — minimum screen time
-const MSG_INTERVAL = 600;  // ms per message
+const MIN_DURATION = 5000;
+const MSG_INTERVAL = 600;
+const TIMEOUT_MS   = 45000; // 45s sonra hata ekranı
 
 export default function AnalysisScreen({ navigation }) {
   const { colors } = useTheme();
-  const { data } = useAuth();
+  const { data, analysisError } = useAuth();
   const [msgIndex, setMsgIndex] = useState(0);
-  const [minDone, setMinDone] = useState(false);
+  const [minDone, setMinDone]   = useState(false);
+  const [timedOut, setTimedOut] = useState(false);
 
   const fadeAnim     = useRef(new Animated.Value(1)).current;
   const scaleAnim    = useRef(new Animated.Value(1)).current;
   const progressAnim = useRef(new Animated.Value(0)).current;
   const floatAnim    = useRef(new Animated.Value(0)).current;
+  const timeoutRef   = useRef(null);
 
-  // Progress bar fills over MIN_DURATION
+  // Progress bar + minimum screen time
   useEffect(() => {
     Animated.timing(progressAnim, {
-      toValue: 1,
-      duration: MIN_DURATION,
-      useNativeDriver: false,
+      toValue: 1, duration: MIN_DURATION, useNativeDriver: false,
     }).start();
     const t = setTimeout(() => setMinDone(true), MIN_DURATION);
     return () => clearTimeout(t);
+  }, []);
+
+  // Hard timeout — analiz çok uzun sürerse kullanıcıyı kilitleme
+  useEffect(() => {
+    timeoutRef.current = setTimeout(() => setTimedOut(true), TIMEOUT_MS);
+    return () => clearTimeout(timeoutRef.current);
   }, []);
 
   // Ghost float animation
@@ -56,12 +63,12 @@ export default function AnalysisScreen({ navigation }) {
     return () => loop.stop();
   }, []);
 
-  // Cycle messages with fade + scale
+  // Cycle messages
   useEffect(() => {
     const interval = setInterval(() => {
       Animated.sequence([
         Animated.parallel([
-          Animated.timing(fadeAnim, { toValue: 0, duration: 180, useNativeDriver: true }),
+          Animated.timing(fadeAnim, { toValue: 0,    duration: 180, useNativeDriver: true }),
           Animated.timing(scaleAnim, { toValue: 0.85, duration: 180, useNativeDriver: true }),
         ]),
         Animated.parallel([
@@ -74,20 +81,45 @@ export default function AnalysisScreen({ navigation }) {
     return () => clearInterval(interval);
   }, []);
 
-  // Navigate when data is ready AND min time passed
+  // Başarılı → Results'a geç
   useEffect(() => {
     if (data && minDone) {
+      clearTimeout(timeoutRef.current);
       navigation.replace('Results');
     }
   }, [data, minDone]);
 
   const msg = MESSAGES[msgIndex];
+  const hasError = analysisError || timedOut;
+  const errorMsg = analysisError || 'Analiz zaman aşımına uğradı. Lütfen tekrar dene.';
 
   const progressWidth = progressAnim.interpolate({
     inputRange: [0, 1],
     outputRange: ['0%', '100%'],
   });
 
+  // ── Hata ekranı ──────────────────────────────────────────────
+  if (hasError) {
+    return (
+      <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]}>
+        <StatusBar barStyle="dark-content" />
+        <View style={styles.container}>
+          <Animated.Image source={ANALYSIS_GHOST} style={styles.analysisGhost} />
+          <Text style={[styles.errorTitle, { color: colors.textPrimary }]}>Bir sorun oluştu</Text>
+          <Text style={[styles.errorMsg, { color: colors.textMuted }]}>{errorMsg}</Text>
+          <TouchableOpacity
+            style={[styles.retryBtn, { backgroundColor: colors.purple }]}
+            onPress={() => navigation.replace('Login')}
+            activeOpacity={0.85}
+          >
+            <Text style={styles.retryBtnText}>Geri Dön</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // ── Normal yükleme ekranı ─────────────────────────────────────
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]}>
       <StatusBar barStyle="dark-content" />
@@ -103,12 +135,13 @@ export default function AnalysisScreen({ navigation }) {
           <Text style={[styles.dots, { color: colors.purple }]}>...</Text>
         </Animated.View>
 
-        {/* Progress bar */}
         <View style={[styles.progressTrack, { backgroundColor: colors.border }]}>
           <Animated.View style={[styles.progressFill, { width: progressWidth, backgroundColor: colors.purple }]} />
         </View>
 
-        <Text style={[styles.footer, { color: colors.textMuted }]}>@{data?.profile?.username ?? 'hesap'} analiz ediliyor</Text>
+        <Text style={[styles.footer, { color: colors.textMuted }]}>
+          @{data?.profile?.username ?? 'hesap'} analiz ediliyor
+        </Text>
 
       </View>
     </SafeAreaView>
@@ -116,20 +149,25 @@ export default function AnalysisScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1 },
+  safe:      { flex: 1 },
   container: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: SPACING.xl },
 
   analysisGhost: { width: 110, height: 110, marginBottom: SPACING.xl },
-  msgBox: { alignItems: 'center', marginBottom: SPACING.xl * 2 },
-  message: { fontSize: 22, fontWeight: '700', textAlign: 'center', lineHeight: 30 },
-  dots: { fontSize: 28, marginTop: SPACING.sm, letterSpacing: 4 },
+  msgBox:   { alignItems: 'center', marginBottom: SPACING.xl * 2 },
+  message:  { fontSize: 22, fontWeight: '700', textAlign: 'center', lineHeight: 30 },
+  dots:     { fontSize: 28, marginTop: SPACING.sm, letterSpacing: 4 },
 
-  progressTrack: {
-    width: '75%', height: 5,
-    borderRadius: 3, overflow: 'hidden',
-  },
-  progressFill: { height: 5, borderRadius: 3 },
+  progressTrack: { width: '75%', height: 5, borderRadius: 3, overflow: 'hidden' },
+  progressFill:  { height: 5, borderRadius: 3 },
 
   footer: { fontSize: 13, marginTop: SPACING.lg },
 
+  // Error state
+  errorTitle: { fontSize: 24, fontWeight: '800', marginBottom: SPACING.md, textAlign: 'center' },
+  errorMsg:   { fontSize: 14, textAlign: 'center', lineHeight: 22, marginBottom: SPACING.xl },
+  retryBtn: {
+    borderRadius: RADIUS.full, paddingVertical: 14,
+    paddingHorizontal: SPACING.xl * 2, alignItems: 'center',
+  },
+  retryBtnText: { color: '#FFF', fontSize: 15, fontWeight: '700' },
 });
