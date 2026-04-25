@@ -18,7 +18,7 @@ import PrivacyPolicyScreen from '../screens/PrivacyPolicyScreen';
 const Stack = createStackNavigator();
 
 export default function AppNavigator() {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
 
   const navTheme = {
     ...DefaultTheme,
@@ -33,7 +33,7 @@ export default function AppNavigator() {
 
   return (
     <NavigationContainer theme={navTheme}>
-      <StatusBar style="light" backgroundColor={colors.background} />
+      <StatusBar style={isDark ? 'light' : 'dark'} backgroundColor={colors.background} />
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         <Stack.Screen name="Onboarding"  component={OnboardingScreen} />
         <Stack.Screen name="Welcome"     component={WelcomeScreen} />

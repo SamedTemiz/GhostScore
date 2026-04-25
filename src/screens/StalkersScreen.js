@@ -5,7 +5,7 @@ import { SPACING, RADIUS } from '../constants/theme';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 
-const CHART_H = [0.4, 0.65, 0.9, 0.7, 0.5, 0.85, 1.0, 0.75, 0.55, 0.88];
+const GHOST = require('../../assets/main/Suspicious_Look.png');
 
 function StalkerRow({ item, index, colors }) {
   return (
@@ -48,15 +48,12 @@ export default function StalkersScreen({ navigation }) {
         <View style={styles.chartLeft}>
           <Text style={[styles.bigCount, { color: colors.purple }]}>{stalkers.length}</Text>
           <Text style={[styles.bigCountLabel, { color: colors.textSecondary }]}>Stalker bulundu</Text>
-          <View style={[styles.pill, { backgroundColor: colors.purple + '22' }]}>
-            <Text style={{ fontSize: 11, color: colors.purple, fontWeight: '600' }}>👁️ Story izleyici</Text>
+          <View style={[styles.pill, { backgroundColor: colors.purple + '22', flexDirection: 'row', alignItems: 'center', gap: 4 }]}>
+            <Ionicons name="eye-outline" size={14} color={colors.purple} />
+            <Text style={{ fontSize: 11, color: colors.purple, fontWeight: '600' }}>Story izleyici</Text>
           </View>
         </View>
-        <View style={styles.chartBars}>
-          {CHART_H.map((h, i) => (
-            <View key={i} style={[styles.chartBar, { height: h * 64, backgroundColor: colors.purple, opacity: 0.28 + h * 0.52 }]} />
-          ))}
-        </View>
+        <Image source={GHOST} style={styles.headerGhost} />
       </View>
 
       <FlatList
@@ -88,8 +85,7 @@ const styles = StyleSheet.create({
   bigCount:      { fontSize: 48, fontWeight: '800', lineHeight: 52 },
   bigCountLabel: { fontSize: 13, marginTop: 2, marginBottom: SPACING.sm },
   pill:          { borderRadius: RADIUS.full, paddingHorizontal: SPACING.sm, paddingVertical: 4, alignSelf: 'flex-start' },
-  chartBars:     { flexDirection: 'row', alignItems: 'flex-end', gap: 3 },
-  chartBar:      { width: 8, borderRadius: 4 },
+  headerGhost: { width: 88, height: 88 },
 
   list: { paddingHorizontal: SPACING.lg, paddingTop: SPACING.sm },
   row:  { flexDirection: 'row', alignItems: 'center', paddingVertical: SPACING.md, borderBottomWidth: 1 },

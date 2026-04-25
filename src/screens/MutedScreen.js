@@ -5,7 +5,7 @@ import { SPACING, RADIUS } from '../constants/theme';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 
-const CHART_H = [0.55, 0.8, 0.4, 0.95, 0.6, 0.75, 0.9, 0.5, 0.7, 0.85];
+const GHOST = require('../../assets/main/Shy_Mode.png');
 
 function MutedRow({ item, colors }) {
   return (
@@ -47,15 +47,12 @@ export default function MutedScreen({ navigation }) {
         <View style={styles.chartLeft}>
           <Text style={[styles.bigCount, { color: colors.mauve }]}>{muted.length}</Text>
           <Text style={[styles.bigCountLabel, { color: colors.textSecondary }]}>Mute tespit edildi</Text>
-          <View style={[styles.pill, { backgroundColor: colors.mauve + '22' }]}>
-            <Text style={{ fontSize: 11, color: colors.mauve, fontWeight: '600' }}>🔇 Sıralama düştü</Text>
+          <View style={[styles.pill, { backgroundColor: colors.mauve + '22', flexDirection: 'row', alignItems: 'center', gap: 4 }]}>
+            <Ionicons name="notifications-off-outline" size={14} color={colors.mauve} />
+            <Text style={{ fontSize: 11, color: colors.mauve, fontWeight: '600' }}>Sıralama düştü</Text>
           </View>
         </View>
-        <View style={styles.chartBars}>
-          {CHART_H.map((h, i) => (
-            <View key={i} style={[styles.chartBar, { height: h * 64, backgroundColor: colors.mauve, opacity: 0.28 + h * 0.52 }]} />
-          ))}
-        </View>
+        <Image source={GHOST} style={styles.headerGhost} />
       </View>
 
       <FlatList
@@ -63,7 +60,7 @@ export default function MutedScreen({ navigation }) {
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => <MutedRow item={item} colors={colors} />}
         contentContainerStyle={styles.list}
-        ListEmptyComponent={<Text style={[styles.empty, { color: colors.textMuted }]}>Mute listesi boş 🔊</Text>}
+        ListEmptyComponent={<Text style={[styles.empty, { color: colors.textMuted }]}>Mute listesi boş</Text>}
       />
     </SafeAreaView>
   );
@@ -87,8 +84,7 @@ const styles = StyleSheet.create({
   bigCount:      { fontSize: 48, fontWeight: '800', lineHeight: 52 },
   bigCountLabel: { fontSize: 13, marginTop: 2, marginBottom: SPACING.sm },
   pill:          { borderRadius: RADIUS.full, paddingHorizontal: SPACING.sm, paddingVertical: 4, alignSelf: 'flex-start' },
-  chartBars:     { flexDirection: 'row', alignItems: 'flex-end', gap: 3 },
-  chartBar:      { width: 8, borderRadius: 4 },
+  headerGhost: { width: 88, height: 88 },
 
   list:  { paddingHorizontal: SPACING.lg, paddingTop: SPACING.sm },
   row:   { flexDirection: 'row', alignItems: 'center', paddingVertical: SPACING.md, borderBottomWidth: 1 },

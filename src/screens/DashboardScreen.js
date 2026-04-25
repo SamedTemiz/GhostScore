@@ -1,4 +1,5 @@
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { SPACING, RADIUS } from '../constants/theme';
 import { useTheme } from '../context/ThemeContext';
@@ -26,7 +27,7 @@ function AnalyticsCard({ icon, title, count, subtitle, cardBg, accent, border, o
       style={[styles.analyticsCard, { backgroundColor: cardBg, borderColor: border }]}>
       <View style={styles.analyticsCardTop}>
         <View style={[styles.analyticsIcon, { backgroundColor: accent + '25' }]}>
-          <Text style={{ fontSize: 18 }}>{icon}</Text>
+          <Ionicons name={icon} size={20} color={accent} />
         </View>
         <Text style={[styles.analyticsCount, { color: accent }]}>{count}</Text>
       </View>
@@ -53,7 +54,8 @@ export default function DashboardScreen({ navigation }) {
   const { data, logout } = useAuth();
   const profile   = data?.profile;
   const score     = profile?.ghostScore ?? 0;
-  const featuredBg = isDark ? '#1A1030' : '#2D1F42';
+  // Featured card stays dark as in the middle screen of the reference
+  const featuredBg = colors.cardDark || '#5C4B5E';
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]}>
@@ -63,15 +65,16 @@ export default function DashboardScreen({ navigation }) {
         <View style={styles.topBar}>
           <View style={styles.topLeft}>
             <View style={[styles.avatarCircle, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              <Text style={{ fontSize: 20 }}>👻</Text>
+              <Ionicons name="person-outline" size={24} color={colors.textPrimary} />
             </View>
             <View>
               <Text style={[styles.topGreeting, { color: colors.textMuted }]}>Merhaba,</Text>
               <Text style={[styles.topUsername, { color: colors.textPrimary }]}>@{profile?.username}</Text>
             </View>
           </View>
-          <TouchableOpacity onPress={() => navigation.navigate('Settings')} style={[styles.logoutBtn, { borderColor: colors.border }]}>
-            <Text style={[styles.logoutText, { color: colors.textSecondary }]}>⚙️  Ayarlar</Text>
+          <TouchableOpacity onPress={() => navigation.navigate('Settings')} style={[styles.logoutBtn, { borderColor: colors.border, flexDirection: 'row', alignItems: 'center', gap: 4 }]}>
+            <Ionicons name="settings-outline" size={16} color={colors.textSecondary} />
+            <Text style={[styles.logoutText, { color: colors.textSecondary }]}>Ayarlar</Text>
           </TouchableOpacity>
         </View>
 
@@ -124,13 +127,13 @@ export default function DashboardScreen({ navigation }) {
         {/* 2-column analytics */}
         <View style={styles.grid}>
           <AnalyticsCard
-            icon="👁️" title="Stalkers" count={data?.stalkers?.length ?? 0}
+            icon="eye-outline" title="Stalkers" count={data?.stalkers?.length ?? 0}
             subtitle="Takip etmeden izliyor"
             cardBg={colors.cardPurple} accent={colors.purple} border={colors.border}
             onPress={() => navigation.navigate('Stalkers')}
           />
           <AnalyticsCard
-            icon="🔇" title="Muted" count={data?.muted?.length ?? 0}
+            icon="notifications-off-outline" title="Muted" count={data?.muted?.length ?? 0}
             subtitle="Sıralama düştü"
             cardBg={colors.cardMauve} accent={colors.mauve} border={colors.border}
             onPress={() => navigation.navigate('Muted')}
@@ -139,10 +142,10 @@ export default function DashboardScreen({ navigation }) {
 
         {/* Full-width unfollower card */}
         <TouchableOpacity activeOpacity={0.8} onPress={() => navigation.navigate('Unfollowers')}
-          style={[styles.unfollowerCard, { backgroundColor: colors.cardTeal, borderColor: colors.teal + '30' }]}>
+          style={[styles.unfollowerCard, { backgroundColor: colors.cardTeal, borderColor: colors.teal + '15' }]}>
           <View style={styles.unfollowerLeft}>
             <View style={[styles.analyticsIcon, { backgroundColor: colors.teal + '25' }]}>
-              <Text style={{ fontSize: 20 }}>🚨</Text>
+              <Ionicons name="alert-circle-outline" size={22} color={colors.teal} />
             </View>
             <View style={{ marginLeft: SPACING.md }}>
               <Text style={[styles.analyticsTitle, { color: colors.teal }]}>Unfollower Alarmı</Text>
@@ -199,7 +202,7 @@ const styles = StyleSheet.create({
   analyticsIcon:    { width: 36, height: 36, borderRadius: RADIUS.sm, alignItems: 'center', justifyContent: 'center' },
   analyticsCount:   { fontSize: 24, fontWeight: '800' },
   analyticsTitle:   { fontSize: 13, fontWeight: '700', marginBottom: 2 },
-  analyticsSubtitle: { fontSize: 11, color: '#999', marginBottom: SPACING.sm },
+  analyticsSubtitle: { fontSize: 11, marginBottom: SPACING.sm },
   miniBarRow:       { flexDirection: 'row', alignItems: 'flex-end', gap: 2, height: 20 },
   miniBar:          { width: 5, borderRadius: 2 },
 
