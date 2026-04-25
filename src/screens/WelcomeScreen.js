@@ -7,7 +7,7 @@ import {
 const MASCOT = require('../../assets/main/Default_Pose.png');
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { SPACING, RADIUS, DARK_COLORS, LIGHT_COLORS } from '../constants/theme';
+import { SPACING, RADIUS, DARK_COLORS, LIGHT_COLORS, SHADOWS, GLOSS } from '../constants/theme';
 
 const { width } = Dimensions.get('window');
 const CARD_W = width * 0.78;
@@ -37,6 +37,8 @@ function PreviewCard({ color, icon, label, value, rotate, top, left, chartType =
       style={[
         styles.previewCard,
         { backgroundColor: color, transform: [{ rotate }, { translateY: floatY }], top, left, width: CARD_W },
+        SHADOWS.glass,
+        GLOSS
       ]}
     >
       <View style={styles.cardHeader}>
@@ -105,13 +107,12 @@ export default function WelcomeScreen({ navigation }) {
             <Text style={[styles.headlineBody, { color: colors.textMuted, flex: 1 }]}>
               Kim seni takip ediyor, kim mute'ladı,{'\n'}kim sessizce izliyor — hepsini gör.
             </Text>
-            <Image source={MASCOT} style={styles.mascot} />
           </View>
         </View>
 
         {/* Single CTA */}
         <TouchableOpacity
-          style={[styles.btnPrimary, { backgroundColor: colors.gold }]}
+          style={[styles.btnPrimary, { backgroundColor: colors.gold }, SHADOWS.glowGold, GLOSS]}
           activeOpacity={0.85}
           onPress={() => navigation.navigate('Login')}
         >
@@ -126,7 +127,7 @@ const styles = StyleSheet.create({
   safe:      { flex: 1 },
   container: { flex: 1, paddingHorizontal: SPACING.lg, justifyContent: 'space-between', paddingBottom: SPACING.xl },
 
-  cardsArea:   { height: 285, marginTop: SPACING.lg, position: 'relative' },
+  cardsArea:   { height: 320, marginTop: SPACING.lg, position: 'relative' },
   previewCard: { position: 'absolute', borderRadius: RADIUS.lg, padding: SPACING.md, paddingBottom: SPACING.lg },
   cardHeader:  { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: SPACING.md },
   iconBox:     { width: 36, height: 36, borderRadius: RADIUS.sm, alignItems: 'center', justifyContent: 'center' },
@@ -141,8 +142,7 @@ const styles = StyleSheet.create({
   headlineBold: { fontSize: 44, fontWeight: '800', lineHeight: 48, marginBottom: SPACING.md },
   headlineBodyRow: { flexDirection: 'row', alignItems: 'flex-end' },
   headlineBody: { fontSize: 14, lineHeight: 22 },
-  mascot: { width: 90, height: 90, marginLeft: SPACING.md },
 
-  btnPrimary:     { borderRadius: RADIUS.full, paddingVertical: 16, alignItems: 'center' },
-  btnPrimaryText: { color: '#1A1200', fontSize: 17, fontWeight: '700' },
+  btnPrimary:     { borderRadius: RADIUS.full, paddingVertical: 18, alignItems: 'center' },
+  btnPrimaryText: { color: '#1A1200', fontSize: 17, fontWeight: '800' },
 });

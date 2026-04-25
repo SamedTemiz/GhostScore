@@ -21,6 +21,9 @@ from instagrapi.exceptions import (
     BadPassword,
     ChallengeRequired,
     UserNotFound,
+    UnknownError,
+    SelectContactPointRecoveryForm,
+    RecaptchaChallengeForm,
 )
 
 log = structlog.get_logger()
@@ -97,13 +100,22 @@ async def login_with_password(username: str, password: str) -> InstagramLoginRes
         log.warning("instagram_login_user_not_found")
         raise ValueError("Kullanıcı bulunamadı")
 
-    except ChallengeRequired:
+    except (ChallengeRequired, SelectContactPointRecoveryForm, RecaptchaChallengeForm):
         log.warning("instagram_login_challenge_required")
         raise RuntimeError("Instagram hesap doğrulaması gerekiyor. Önce Instagram uygulamasından giriş yap.")
 
+    except UnknownError as e:
+        msg = str(e).lower()
+        log.warning("instagram_login_unknown_error", detail=str(e)[:120])
+        if "password" in msg or "incorrect" in msg:
+            raise ValueError("Kullanıcı adı veya şifre hatalı")
+        if "checkpoint" in msg or "challenge" in msg or "verify" in msg or "suspicious" in msg:
+            raise RuntimeError("Instagram şüpheli giriş tespit etti. Önce Instagram uygulamasından giriş yapıp hesabını doğrula.")
+        raise RuntimeError(f"Instagram hatası: {str(e)[:80]}")
+
     except Exception as e:
-        log.error("instagram_login_error", error_type=type(e).__name__)
-        raise RuntimeError("Instagram bağlantısı kurulamadı. Lütfen tekrar dene.")
+        log.error("instagram_login_error", error_type=type(e).__name__, detail=str(e)[:120])
+        raise RuntimeError(f"Instagram bağlantı hatası ({type(e).__name__}): {str(e)[:80]}")
 
     finally:
         # Şifreyi bellekten temizle — her durumda

@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../context/ThemeContext';
-import { SPACING, RADIUS } from '../constants/theme';
+import { SPACING, RADIUS, SHADOWS, GLOSS } from '../constants/theme';
 
 const GHOST_IMAGES = [
   require('../../assets/main/Default_Pose.png'),
@@ -112,6 +112,7 @@ export default function OnboardingScreen({ navigation }) {
               styles.dot,
               { backgroundColor: colors.border },
               i === index && { backgroundColor: slide.accent, width: 24 },
+              SHADOWS.soft
             ]} />
           </TouchableOpacity>
         ))}
@@ -120,10 +121,15 @@ export default function OnboardingScreen({ navigation }) {
       {/* Button */}
       <TouchableOpacity
         onPress={next}
-        style={[styles.btn, { backgroundColor: slide.accent }]}
+        style={[
+          styles.btn, 
+          { backgroundColor: slide.accent }, 
+          SHADOWS.glass, 
+          GLOSS
+        ]}
         activeOpacity={0.85}
       >
-        <Text style={styles.btnText}>
+        <Text style={[styles.btnText, { color: '#FFFFFF' }]}>
           {index === SLIDES.length - 1 ? 'Hadi Başlayalım →' : 'Sonraki →'}
         </Text>
       </TouchableOpacity>
@@ -144,7 +150,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: SPACING.xl,
   },
-  ghostImg: { width: 150, height: 150, marginBottom: SPACING.xl },
+  ghostImg: { width: 170, height: 170, marginBottom: SPACING.xl },
   title: {
     fontSize: 36, fontWeight: '800',
     textAlign: 'center', lineHeight: 44, marginBottom: SPACING.lg,
@@ -160,5 +166,5 @@ const styles = StyleSheet.create({
     marginHorizontal: SPACING.lg, marginBottom: SPACING.xl,
     borderRadius: RADIUS.full, paddingVertical: 16, alignItems: 'center',
   },
-  btnText: { color: '#1A1200', fontSize: 16, fontWeight: '700' },
+  btnText: { fontSize: 16, fontWeight: '700' },
 });

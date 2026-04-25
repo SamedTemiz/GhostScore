@@ -1,11 +1,22 @@
 import { useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, Animated, StatusBar, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, Animated, StatusBar, TouchableOpacity, Dimensions, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import { SPACING, RADIUS } from '../constants/theme';
 
-const ANALYSIS_GHOST = require('../../assets/main/Top_View.png');
+const { width, height } = Dimensions.get('window');
+
+const GHOST_ASSETS = [
+  require('../../assets/main/Top_View.png'),
+  require('../../assets/main/Left_Profile.png'),
+  require('../../assets/main/Right_Profile.png'),
+  require('../../assets/main/Shy_Mode.png'),
+  require('../../assets/main/Surprised_Ghost.png'),
+  require('../../assets/main/Suspicious_Look.png'),
+  require('../../assets/main/Happy_Spectator.png'),
+  require('../../assets/main/instagram_logo.webp'),
+];
 
 const MESSAGES = [
   'Profil inceleniyor',
@@ -16,12 +27,66 @@ const MESSAGES = [
   'Takibi bırakanlar hesaplanıyor',
   'Sosyal hayatın haritalanıyor',
   'Gizli bağlantılar tespit ediliyor',
+  'Story etkileşimleri puanlanıyor',
+  'Profil popülerliği hesaplanıyor',
   'Sonuçlar hazırlanıyor',
 ];
 
-const MIN_DURATION = 5000;
-const MSG_INTERVAL = 600;
-const TIMEOUT_MS   = 45000; // 45s sonra hata ekranı
+const MIN_DURATION = 12000; // 12 saniye
+const MSG_INTERVAL = 2500;
+const TIMEOUT_MS   = 60000; // 60s sonra hata ekranı
+
+// ── Arka plan ghost bileşeni ───────────────────────────────────
+function BackgroundGhost({ delay = 0 }) {
+  const xAnim = useRef(new Animated.Value(-150)).current;
+  const ghostIdx = useRef(Math.floor(Math.random() * GHOST_ASSETS.length)).current;
+  
+  // Tüm rastgele değerleri useRef ile sabitle ki render sırasında değişmesinler
+  const isIG = ghostIdx === GHOST_ASSETS.length - 1;
+  const sizeRef = useRef(isIG ? (Math.random() * 20 + 25) : (Math.random() * 30 + 50)).current;
+  const yPosRef  = useRef(Math.random() * height).current;
+  const durationRef = useRef(Math.random() * 4000 + 6000).current;
+  const directionRef = useRef(Math.random() > 0.5 ? 1 : -1).current;
+  const scaleRef = useRef(Math.random() * 0.4 + 0.8).current; 
+
+  useEffect(() => {
+    const startX = directionRef === 1 ? -150 : width + 50;
+    const endX   = directionRef === 1 ? width + 50 : -150;
+    
+    const runAnim = () => {
+      xAnim.setValue(startX);
+      Animated.timing(xAnim, {
+        toValue: endX,
+        duration: durationRef,
+        useNativeDriver: true,
+      }).start(() => {
+        runAnim();
+      });
+    };
+
+    const t = setTimeout(runAnim, delay);
+    return () => clearTimeout(t);
+  }, []);
+
+  return (
+    <Animated.Image
+      source={GHOST_ASSETS[ghostIdx]}
+      style={[
+        styles.bgGhost,
+        { 
+          top: yPosRef,
+          width: sizeRef,
+          height: sizeRef,
+          transform: [
+            { translateX: xAnim },
+            { scaleX: directionRef === -1 ? -scaleRef : scaleRef },
+            { scaleY: scaleRef }
+          ] 
+        }
+      ]}
+    />
+  );
+}
 
 export default function AnalysisScreen({ navigation }) {
   const { colors } = useTheme();
@@ -45,49 +110,48 @@ export default function AnalysisScreen({ navigation }) {
     return () => clearTimeout(t);
   }, []);
 
-  // Hard timeout — analiz çok uzun sürerse kullanıcıyı kilitleme
+  // Hard timeout
   useEffect(() => {
     timeoutRef.current = setTimeout(() => setTimedOut(true), TIMEOUT_MS);
     return () => clearTimeout(timeoutRef.current);
   }, []);
 
-  // Ghost float animation
+  // Ana Ghost float
   useEffect(() => {
     const loop = Animated.loop(
       Animated.sequence([
-        Animated.timing(floatAnim, { toValue: -10, duration: 1400, useNativeDriver: true }),
-        Animated.timing(floatAnim, { toValue: 0,   duration: 1400, useNativeDriver: true }),
+        Animated.timing(floatAnim, { toValue: -12, duration: 1200, useNativeDriver: true }),
+        Animated.timing(floatAnim, { toValue: 0,   duration: 1200, useNativeDriver: true }),
       ]),
     );
     loop.start();
     return () => loop.stop();
   }, []);
 
-  // Cycle messages
+  // Mesaj döngüsü
   useEffect(() => {
     const interval = setInterval(() => {
       Animated.sequence([
-        Animated.parallel([
-          Animated.timing(fadeAnim, { toValue: 0,    duration: 180, useNativeDriver: true }),
-          Animated.timing(scaleAnim, { toValue: 0.85, duration: 180, useNativeDriver: true }),
-        ]),
-        Animated.parallel([
-          Animated.timing(fadeAnim, { toValue: 1, duration: 200, useNativeDriver: true }),
-          Animated.timing(scaleAnim, { toValue: 1, duration: 200, useNativeDriver: true }),
-        ]),
+        Animated.timing(fadeAnim, { toValue: 0, duration: 300, useNativeDriver: true }),
+        Animated.timing(fadeAnim, { toValue: 1, duration: 400, useNativeDriver: true }),
       ]).start();
       setMsgIndex((i) => (i + 1) % MESSAGES.length);
     }, MSG_INTERVAL);
     return () => clearInterval(interval);
   }, []);
 
+  const isSimulation = navigation.getState().routes.find(r => r.name === 'Analysis')?.params?.simulation;
+
   // Başarılı → Results'a geç
   useEffect(() => {
-    if (data && minDone) {
+    if ((data || isSimulation) && minDone) {
       clearTimeout(timeoutRef.current);
-      navigation.replace('Results');
+      const t = setTimeout(() => {
+        navigation.replace('Results');
+      }, 500);
+      return () => clearTimeout(t);
     }
-  }, [data, minDone]);
+  }, [data, minDone, isSimulation]);
 
   const msg = MESSAGES[msgIndex];
   const hasError = analysisError || timedOut;
@@ -98,13 +162,12 @@ export default function AnalysisScreen({ navigation }) {
     outputRange: ['0%', '100%'],
   });
 
-  // ── Hata ekranı ──────────────────────────────────────────────
   if (hasError) {
     return (
       <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]}>
         <StatusBar barStyle="dark-content" />
         <View style={styles.container}>
-          <Animated.Image source={ANALYSIS_GHOST} style={styles.analysisGhost} />
+          <Image source={GHOST_ASSETS[4]} style={styles.analysisGhost} />
           <Text style={[styles.errorTitle, { color: colors.textPrimary }]}>Bir sorun oluştu</Text>
           <Text style={[styles.errorMsg, { color: colors.textMuted }]}>{errorMsg}</Text>
           <TouchableOpacity
@@ -119,18 +182,22 @@ export default function AnalysisScreen({ navigation }) {
     );
   }
 
-  // ── Normal yükleme ekranı ─────────────────────────────────────
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]}>
       <StatusBar barStyle="dark-content" />
-      <View style={styles.container}>
+      
+      {/* Arka plan ghostları - Daha yoğun (24 adet) */}
+      {[...Array(24)].map((_, i) => (
+        <BackgroundGhost key={i} delay={i * 600} />
+      ))}
 
+      <View style={styles.container}>
         <Animated.Image
-          source={ANALYSIS_GHOST}
+          source={GHOST_ASSETS[0]}
           style={[styles.analysisGhost, { transform: [{ translateY: floatAnim }] }]}
         />
 
-        <Animated.View style={[styles.msgBox, { opacity: fadeAnim, transform: [{ scale: scaleAnim }] }]}>
+        <Animated.View style={[styles.msgBox, { opacity: fadeAnim }]}>
           <Text style={[styles.message, { color: colors.textPrimary }]}>{msg}</Text>
           <Text style={[styles.dots, { color: colors.purple }]}>...</Text>
         </Animated.View>
@@ -142,7 +209,6 @@ export default function AnalysisScreen({ navigation }) {
         <Text style={[styles.footer, { color: colors.textMuted }]}>
           @{data?.profile?.username ?? 'hesap'} analiz ediliyor
         </Text>
-
       </View>
     </SafeAreaView>
   );
@@ -150,19 +216,26 @@ export default function AnalysisScreen({ navigation }) {
 
 const styles = StyleSheet.create({
   safe:      { flex: 1 },
-  container: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: SPACING.xl },
+  container: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: SPACING.xl, zIndex: 10 },
 
-  analysisGhost: { width: 110, height: 110, marginBottom: SPACING.xl },
+  bgGhost: {
+    position: 'absolute',
+    width: 80,
+    height: 80,
+    opacity: 0.15,
+    zIndex: 1,
+  },
+
+  analysisGhost: { width: 140, height: 140, marginBottom: SPACING.xl },
   msgBox:   { alignItems: 'center', marginBottom: SPACING.xl * 2 },
   message:  { fontSize: 22, fontWeight: '700', textAlign: 'center', lineHeight: 30 },
   dots:     { fontSize: 28, marginTop: SPACING.sm, letterSpacing: 4 },
 
-  progressTrack: { width: '75%', height: 5, borderRadius: 3, overflow: 'hidden' },
-  progressFill:  { height: 5, borderRadius: 3 },
+  progressTrack: { width: '75%', height: 6, borderRadius: 3, overflow: 'hidden' },
+  progressFill:  { height: 6, borderRadius: 3 },
 
   footer: { fontSize: 13, marginTop: SPACING.lg },
 
-  // Error state
   errorTitle: { fontSize: 24, fontWeight: '800', marginBottom: SPACING.md, textAlign: 'center' },
   errorMsg:   { fontSize: 14, textAlign: 'center', lineHeight: 22, marginBottom: SPACING.xl },
   retryBtn: {
