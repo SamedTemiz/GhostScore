@@ -52,7 +52,7 @@ export default function SettingsScreen({ navigation }) {
         {/* Profile card */}
         <View style={[styles.profileCard, { backgroundColor: colors.cardPurple, borderColor: colors.border }]}>
           <View style={[styles.profileAvatar, { backgroundColor: colors.purpleDim }]}>
-            <Text style={{ fontSize: 28 }}>👻</Text>
+            <Ionicons name="person-outline" size={32} color={colors.purple} />
           </View>
           <View>
             <Text style={[styles.profileName, { color: colors.textPrimary }]}>

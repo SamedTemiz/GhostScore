@@ -1,13 +1,21 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { COLORS } from '../constants/theme';
+import { COLORS, SHADOWS } from '../constants/theme';
 
 // Simple SVG-free score ring using border trick
 export default function ScoreRing({ score = 72, size = 120 }) {
   const color = score >= 70 ? COLORS.success : score >= 40 ? COLORS.warning : COLORS.danger;
 
   return (
-    <View style={[styles.container, { width: size, height: size, borderRadius: size / 2, borderColor: color }]}>
+    <View style={[
+      styles.container, 
+      { 
+        width: size, height: size, borderRadius: size / 2, 
+        borderColor: color,
+        backgroundColor: color + '15', // Subtle inner glow
+      },
+      SHADOWS.soft
+    ]}>
       <Text style={[styles.score, { color }]}>{score}</Text>
       <Text style={styles.label}>Ghost{'\n'}Score</Text>
     </View>
@@ -16,7 +24,7 @@ export default function ScoreRing({ score = 72, size = 120 }) {
 
 const styles = StyleSheet.create({
   container: {
-    borderWidth: 5,
+    borderWidth: 6,
     alignItems: 'center',
     justifyContent: 'center',
   },

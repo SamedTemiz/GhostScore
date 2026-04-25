@@ -1,5 +1,8 @@
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, ConfigDict, field_validator
+from pydantic.alias_generators import to_camel
 import re
+
+_camel = ConfigDict(alias_generator=to_camel, populate_by_name=True)
 
 
 # ── Request Modelleri ─────────────────────────────────────────
@@ -11,9 +14,7 @@ class InstagramLoginRequest(BaseModel):
     @field_validator("username")
     @classmethod
     def clean_username(cls, v: str) -> str:
-        # @ işaretini temizle, küçük harfe çevir
         v = v.strip().lstrip("@").lower()
-        # Sadece izin verilen karakterler
         if not re.match(r"^[a-z0-9._]+$", v):
             raise ValueError("Geçersiz kullanıcı adı formatı")
         return v
@@ -21,10 +22,9 @@ class InstagramLoginRequest(BaseModel):
     @field_validator("password")
     @classmethod
     def validate_password(cls, v: str) -> str:
-        # Şifreyi log'a yazmamak için minimal validation
         if len(v.strip()) == 0:
             raise ValueError("Şifre boş olamaz")
-        return v  # değiştirme, orijinal gönder
+        return v
 
 
 class TwoFactorRequest(BaseModel):
@@ -39,6 +39,7 @@ class RefreshTokenRequest(BaseModel):
 
 # ── Response Modelleri ────────────────────────────────────────
 
+# TokenResponse intentionally stays snake_case — api.js uses access_token / refresh_token
 class TokenResponse(BaseModel):
     access_token: str
     refresh_token: str
@@ -46,6 +47,7 @@ class TokenResponse(BaseModel):
 
 
 class ProfileData(BaseModel):
+    model_config = _camel
     username: str
     followers: int
     following: int
@@ -55,6 +57,7 @@ class ProfileData(BaseModel):
 
 
 class StalkerItem(BaseModel):
+    model_config = _camel
     id: str
     username: str
     profile_pic: str
@@ -63,6 +66,7 @@ class StalkerItem(BaseModel):
 
 
 class MutedItem(BaseModel):
+    model_config = _camel
     id: str
     username: str
     profile_pic: str
@@ -71,6 +75,7 @@ class MutedItem(BaseModel):
 
 
 class UnfollowerItem(BaseModel):
+    model_config = _camel
     id: str
     username: str
     profile_pic: str
@@ -79,6 +84,7 @@ class UnfollowerItem(BaseModel):
 
 
 class AnalysisResponse(BaseModel):
+    model_config = _camel
     profile: ProfileData
     stalkers: list[StalkerItem]
     muted: list[MutedItem]

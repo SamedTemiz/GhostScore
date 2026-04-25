@@ -5,7 +5,7 @@ import { SPACING, RADIUS } from '../constants/theme';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 
-const CHART_H = [0.6, 0.4, 1.0, 0.7, 0.5, 0.9, 0.65, 0.85, 0.45, 0.75];
+const GHOST = require('../../assets/main/Surprised_Ghost.png');
 
 function UnfollowerRow({ item, colors }) {
   const mutual = item.wasFollowedBack;
@@ -53,17 +53,14 @@ export default function UnfollowersScreen({ navigation }) {
         <View style={styles.chartLeft}>
           <Text style={[styles.bigCount, { color: colors.teal }]}>{unfollowers.length}</Text>
           <Text style={[styles.bigCountLabel, { color: colors.textSecondary }]}>Unfollower bulundu</Text>
-          <View style={[styles.pill, { backgroundColor: colors.teal + '22' }]}>
+          <View style={[styles.pill, { backgroundColor: colors.teal + '22', flexDirection: 'row', alignItems: 'center', gap: 4 }]}>
+            <Ionicons name="alert-circle-outline" size={14} color={colors.teal} />
             <Text style={{ fontSize: 11, color: colors.teal, fontWeight: '600' }}>
-              🚨 {mutual} karşılıklı
+              {mutual} karşılıklı
             </Text>
           </View>
         </View>
-        <View style={styles.chartBars}>
-          {CHART_H.map((h, i) => (
-            <View key={i} style={[styles.chartBar, { height: h * 64, backgroundColor: colors.teal, opacity: 0.28 + h * 0.52 }]} />
-          ))}
-        </View>
+        <Image source={GHOST} style={styles.headerGhost} />
       </View>
 
       <FlatList
@@ -71,7 +68,7 @@ export default function UnfollowersScreen({ navigation }) {
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => <UnfollowerRow item={item} colors={colors} />}
         contentContainerStyle={styles.list}
-        ListEmptyComponent={<Text style={[styles.empty, { color: colors.textMuted }]}>Kimse çıkmamış ✨</Text>}
+        ListEmptyComponent={<Text style={[styles.empty, { color: colors.textMuted }]}>Kimse çıkmamış</Text>}
       />
     </SafeAreaView>
   );
@@ -95,8 +92,7 @@ const styles = StyleSheet.create({
   bigCount:      { fontSize: 48, fontWeight: '800', lineHeight: 52 },
   bigCountLabel: { fontSize: 13, marginTop: 2, marginBottom: SPACING.sm },
   pill:          { borderRadius: RADIUS.full, paddingHorizontal: SPACING.sm, paddingVertical: 4, alignSelf: 'flex-start' },
-  chartBars:     { flexDirection: 'row', alignItems: 'flex-end', gap: 3 },
-  chartBar:      { width: 8, borderRadius: 4 },
+  headerGhost: { width: 88, height: 88 },
 
   list:  { paddingHorizontal: SPACING.lg, paddingTop: SPACING.sm },
   row:   { flexDirection: 'row', alignItems: 'center', paddingVertical: SPACING.md, borderBottomWidth: 1 },

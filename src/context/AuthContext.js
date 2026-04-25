@@ -4,10 +4,11 @@ import { authApi, analysisApi, tokenStore } from '../services/api';
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
-  const [user, setUser]       = useState(null);
-  const [data, setData]       = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError]     = useState(null);
+  const [user, setUser]               = useState(null);
+  const [data, setData]               = useState(null);
+  const [loading, setLoading]         = useState(false);
+  const [error, setError]             = useState(null);
+  const [analysisError, setAnalysisError] = useState(null);
 
   // Uygulama açılışında token varsa oturumu geri yükle
   useEffect(() => {
@@ -19,16 +20,14 @@ export function AuthProvider({ children }) {
   const login = useCallback(async (username, password) => {
     setLoading(true);
     setError(null);
+    setAnalysisError(null);
     try {
       await authApi.login(username, password);
       setUser({ username });
-      // Analiz arka planda başlatılır — AnalysisScreen'de await edilir
       _runAnalysis();
     } catch (err) {
-      if (err.status === 202) {
-        // 2FA gerekiyor — caller handle edecek
-        throw err;
-      }
+      // 202 = 2FA gerekiyor — caller handle eder
+      if (err.status === 202) throw err;
       setError(err.message);
       throw err;
     } finally {
@@ -39,6 +38,7 @@ export function AuthProvider({ children }) {
   const verify2fa = useCallback(async (username, code, identifier) => {
     setLoading(true);
     setError(null);
+    setAnalysisError(null);
     try {
       await authApi.verify2fa(username, code, identifier);
       setUser({ username });
@@ -51,34 +51,36 @@ export function AuthProvider({ children }) {
     }
   }, []);
 
-  // Analizi arka planda başlatır — AnalysisScreen sonucu poll eder
   const _runAnalysis = async () => {
+    setAnalysisError(null);
     try {
       const result = await analysisApi.run();
       setData(result);
     } catch (err) {
-      // 429 = günlük limit, 401 = oturum süresi dolmuş
+      // 429 = günlük limit → son analizi göster
       if (err.status === 429 || err.status === 401) {
-        // Son analizi çekmeyi dene
         try {
           const last = await analysisApi.latest();
           setData(last);
+          return;
         } catch {}
       }
+      setAnalysisError(err.message || 'Analiz başarısız oldu.');
     }
   };
 
   const refreshData = useCallback(async () => {
     setLoading(true);
+    setAnalysisError(null);
     try {
       const result = await analysisApi.run();
       setData(result);
     } catch (err) {
       if (err.status === 429) {
-        // Son analize düş
         const last = await analysisApi.latest();
         setData(last);
       } else {
+        setAnalysisError(err.message || 'Analiz başarısız oldu.');
         throw err;
       }
     } finally {
@@ -93,11 +95,15 @@ export function AuthProvider({ children }) {
       setUser(null);
       setData(null);
       setError(null);
+      setAnalysisError(null);
     }
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, data, loading, error, login, verify2fa, logout, refreshData }}>
+    <AuthContext.Provider value={{
+      user, data, loading, error, analysisError,
+      login, verify2fa, logout, refreshData,
+    }}>
       {children}
     </AuthContext.Provider>
   );

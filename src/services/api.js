@@ -95,6 +95,15 @@ async function request(path, options = {}, retry = true) {
     }
   }
 
+  // 2FA gerekiyor — header'dan identifier al, özel hata fırlat
+  if (res.status === 202) {
+    const identifier = res.headers.get('X-2FA-Identifier') || '';
+    const err = new Error('TWO_FACTOR_REQUIRED');
+    err.status = 202;
+    err.twoFaIdentifier = identifier;
+    throw err;
+  }
+
   if (!res.ok) {
     let detail = 'Bir hata oluştu';
     try {
