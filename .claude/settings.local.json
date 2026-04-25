@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm --version)",
+      "Bash(npx create-expo-app@latest . --template blank)",
+      "Bash(npx create-expo-app@latest . --template blank --yes)",
+      "Bash(npm init:*)",
+      "Bash(npm install:*)",
+      "Bash(npx expo:*)",
+      "Bash(npx kill-port:*)",
+      "Bash(taskkill /F /IM node.exe)",
+      "Bash(python --version)",
+      "Bash(python3 --version)",
+      "Bash(py --version)",
+      "PowerShell(python --version)",
+      "PowerShell(cd C:\\\\Users\\\\helmsdeep\\\\MyProjects\\\\GhostScore\\\\backend; $env:PYTHONPATH = \".\"; .\\\\venv\\\\Scripts\\\\uvicorn app.main:app --reload --port 8000 2>&1 | Select-Object -First 30)",
+      "PowerShell(cd C:\\\\Users\\\\helmsdeep\\\\MyProjects\\\\GhostScore\\\\backend; $env:PYTHONPATH = \".\"; .\\\\venv\\\\Scripts\\\\python -c \"from app.main import app\" 2>&1)",
+      "PowerShell(cd C:\\\\Users\\\\helmsdeep\\\\MyProjects\\\\GhostScore\\\\backend; $env:PYTHONPATH = \".\"; .\\\\venv\\\\Scripts\\\\python -c \"from app.main import app; print\\('OK'\\)\" 2>&1)",
+      "PowerShell(cd C:\\\\Users\\\\helmsdeep\\\\MyProjects\\\\GhostScore\\\\backend; $env:PYTHONPATH = \".\"; Start-Process -NoNewWindow -FilePath \".\\\\venv\\\\Scripts\\\\uvicorn\" -ArgumentList \"app.main:app\",\"--reload\",\"--port\",\"8000\" -PassThru | Out-Null; Start-Sleep -Seconds 3; try { \\(Invoke-WebRequest -Uri \"http://localhost:8000/health\" -UseBasicParsing\\).Content } catch { \"Sunucu henüz hazır değil\" })",
+      "PowerShell(try { \\(Invoke-WebRequest -Uri \"http://localhost:8000/health\" -UseBasicParsing\\).Content } catch { \"Sunucu kapalı\" })",
+      "PowerShell(cd C:\\\\Users\\\\helmsdeep\\\\MyProjects\\\\GhostScore\\\\backend; Start-Process -NoNewWindow -FilePath \".\\\\venv\\\\Scripts\\\\uvicorn\" -ArgumentList \"app.main:app\",\"--host\",\"0.0.0.0\",\"--port\",\"8000\",\"--reload\" -PassThru | Out-Null; Start-Sleep -Seconds 3; try { \\(Invoke-WebRequest -Uri \"http://192.168.1.193:8000/health\" -UseBasicParsing\\).Content } catch { $_.Exception.Message })",
+      "PowerShell(Stop-Process -Name \"node\" -Force)",
+      "PowerShell($pid = \\(Get-NetTCPConnection -LocalPort 8081 -State Listen -ErrorAction SilentlyContinue\\).OwningProcess; if \\($pid\\) { Stop-Process -Id $pid -Force; \"Port 8081 durduruldu\" } else { \"Port 8081 zaten boş\" })",
+      "PowerShell($proc = \\(Get-NetTCPConnection -LocalPort 8081 -State Listen -ErrorAction SilentlyContinue\\).OwningProcess; if \\($proc\\) { Stop-Process -Id $proc -Force; \"Port 8081 durduruldu\" } else { \"Port 8081 zaten boş\" })"
+    ]
+  }
+}

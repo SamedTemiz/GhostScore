@@ -1,0 +1,32 @@
+# Web Framework
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+
+# Instagram Private API
+instagrapi==2.1.2
+pydantic==2.7.1
+Pillow>=8.1.1
+
+# Security
+python-jose[cryptography]==3.3.0   # JWT (RS256)
+cryptography==43.0.1               # AES-256-GCM session encryption
+passlib[bcrypt]==1.7.4             # password hashing (Supabase users)
+
+# Database
+supabase==2.7.4
+postgrest==0.16.11
+
+# Rate Limiting
+slowapi==0.1.9
+redis==5.0.8
+
+# Validation & Config
+pydantic-settings==2.5.2
+python-multipart==0.0.12
+
+# HTTP Client
+httpx==0.27.2
+
+# Utilities
+python-dotenv==1.0.1
+structlog==24.4.0          # structured logging (no PII)
