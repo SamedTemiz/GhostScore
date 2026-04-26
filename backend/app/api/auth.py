@@ -61,9 +61,19 @@ async def login(request: Request, body: InstagramLoginRequest):
     """
     Instagram'a bağlan, JWT token döndür.
     Şifre bu fonksiyon sonunda bellekten silinir.
+    INSTAGRAM_MOCK=true ise herhangi bir kullanıcı adı/şifre kabul edilir.
     """
     client_ip = request.client.host if request.client else "unknown"
     log.info("login_attempt", ip_hash=_hash_ip(client_ip))
+
+    # ── MOCK MOD ─────────────────────────────────────────────────
+    if settings.INSTAGRAM_MOCK:
+        log.info("login_mock_mode", username=body.username)
+        mock_user_id = f"mock-{body.username}"
+        return TokenResponse(
+            access_token=create_access_token(mock_user_id),
+            refresh_token=create_refresh_token(mock_user_id),
+        )
 
     db = get_supabase()
 

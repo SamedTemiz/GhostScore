@@ -68,7 +68,16 @@ async function request(path, options = {}, retry = true) {
     ...options.headers,
   };
 
-  const res = await fetch(`${BASE_URL}${path}`, { ...options, headers });
+  let res;
+  try {
+    res = await fetch(`${BASE_URL}${path}`, { ...options, headers });
+  } catch (networkErr) {
+    const err = new Error(
+      'Backend\'e bağlanılamıyor. Sunucunun çalıştığını ve IP adresinin doğru olduğunu kontrol et.'
+    );
+    err.status = 0;
+    throw err;
+  }
 
   // 401 → token yenile ve tekrar dene
   if (res.status === 401 && retry) {

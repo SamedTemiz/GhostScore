@@ -10,7 +10,7 @@ import structlog
 
 from app.api.auth import get_current_user_id
 from app.config import get_settings
-from app.core.instagram import login_with_session, fetch_analysis_data
+from app.core.instagram import login_with_session, fetch_analysis_data, MOCK_ANALYSIS_DATA
 from app.core.security import (
     decrypt_instagram_session,
     encrypt_instagram_session,
@@ -42,8 +42,26 @@ async def run_analysis(user_id: str = Depends(get_current_user_id)):
     """
     Günde 1 analiz hakkı. Rate limit DB'de kontrol edilir.
     Instagram session şifreli olarak saklanır — hiçbir zaman plain text dışarı çıkmaz.
+    INSTAGRAM_MOCK=true ise gerçek Instagram çağrısı yapılmaz, mock veri döner.
     """
     db = get_supabase()
+
+    # ── MOCK MOD ─────────────────────────────────────────────────
+    if settings.INSTAGRAM_MOCK:
+        log.info("analysis_mock_mode", user_id=user_id)
+        data = MOCK_ANALYSIS_DATA
+        profile = data["profile"]
+        stalkers = data["stalkers"]
+        muted = data["muted"]
+        unfollowers = data["unfollowers"]
+        return AnalysisResponse(
+            profile=ProfileData(**profile),
+            stalkers=[StalkerItem(**s) for s in stalkers],
+            muted=[MutedItem(**m) for m in muted],
+            unfollowers=[UnfollowerItem(**u) for u in unfollowers],
+            analysis_id="mock-id",
+            created_at=datetime.now(timezone.utc).isoformat(),
+        )
 
     # Kullanıcıyı çek
     user_row = (

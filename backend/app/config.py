@@ -18,19 +18,17 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: str = "RS256"
 
     # ── AES-256-GCM (Instagram session şifreleme) ─────────
-    # 32 byte = 256 bit, base64 encoded
     SESSION_ENCRYPTION_KEY: str       # openssl rand -base64 32
 
     # ── Supabase ─────────────────────────────────────────
     SUPABASE_URL: str
     SUPABASE_SERVICE_KEY: str         # service_role key (backend only)
-    SUPABASE_JWT_SECRET: str = ""     # Supabase JWT doğrulama (opsiyonel)
+    SUPABASE_JWT_SECRET: str = ""
 
     # ── Redis (rate limiting) ─────────────────────────────
     REDIS_URL: str = "redis://localhost:6379"
 
     # ── CORS ─────────────────────────────────────────────
-    # Sadece uygulamamızın domain'i — wildcard YASAK
     ALLOWED_ORIGINS: str = ""
 
     @field_validator("ALLOWED_ORIGINS", mode="before")
@@ -45,8 +43,13 @@ class Settings(BaseSettings):
         return [o.strip() for o in self.ALLOWED_ORIGINS.split(",") if o.strip()]
 
     # ── Rate Limits ───────────────────────────────────────
-    ANALYSIS_PER_DAY_LIMIT: int = 1   # kullanıcı başına günlük analiz
+    ANALYSIS_PER_DAY_LIMIT: int = 1
     LOGIN_RATE_LIMIT: str = "5/minute"
+
+    # ── Dev / Test ────────────────────────────────────────
+    # True yapıldığında gerçek Instagram bağlantısı kurulmaz,
+    # mock veri döndürülür — geliştirme ortamında akışı test etmek için.
+    INSTAGRAM_MOCK: bool = False
 
     @property
     def encryption_key_bytes(self) -> bytes:

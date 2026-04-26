@@ -151,9 +151,17 @@ function StalkersCard({ stalkers }) {
         />
       ))}
 
-      {!unlocked && locked.length > 0 && (
+      {stalkers.length === 0 && (
+        <View style={[styles.emptyState, { backgroundColor: colors.cardPurple }]}>
+          <Text style={styles.emptyEmoji}>👻</Text>
+          <Text style={[styles.emptyTitle, { color: colors.purple }]}>Stalker yok!</Text>
+          <Text style={[styles.emptyText, { color: colors.textMuted }]}>Son storylerine bakan takipçisiz kimse görünmüyor.</Text>
+        </View>
+      )}
+
+      {!unlocked && stalkers.length > 0 && locked.length > 0 && (
         <View style={styles.lockedSection}>
-          {locked.slice(0, 3).map((_, i) => <BlurredRow key={i} />)}
+          {[0, 1, 2].map((i) => <BlurredRow key={i} />)}
           <LockOverlay onUnlock={() => setUnlocked(true)} />
         </View>
       )}
@@ -178,6 +186,8 @@ function StalkersCard({ stalkers }) {
 function MutedCard({ muted }) {
   const { colors } = useTheme();
   const [unlocked, setUnlocked] = useState(false);
+  const visible = muted.slice(0, 1);
+  const locked  = muted.slice(1);
 
   return (
     <View style={styles.card}>
@@ -189,23 +199,48 @@ function MutedCard({ muted }) {
         <Ionicons name="notifications-off-outline" size={42} color={colors.mauve + '40'} />
       </View>
 
-      <View style={styles.lockedSection}>
-        {muted.slice(0, 4).map((_, i) => <BlurredRow key={i} />)}
-        {!unlocked && <LockOverlay onUnlock={() => setUnlocked(true)} />}
-      </View>
+      {muted.length === 0 ? (
+        <View style={[styles.emptyState, { backgroundColor: colors.cardMauve }]}>
+          <Text style={styles.emptyEmoji}>🎉</Text>
+          <Text style={[styles.emptyTitle, { color: colors.mauve }]}>Temiz görünüyor!</Text>
+          <Text style={[styles.emptyText, { color: colors.textMuted }]}>Seni sessize alan kimse yok.</Text>
+        </View>
+      ) : (
+        <>
+          {visible.map((m) => (
+            <UserRow
+              key={m.id}
+              item={{ ...m, hint: `Son görülme: ${m.lastSeen}` }}
+              right={
+                <View style={[styles.storyBadge, { backgroundColor: colors.mauve + '20' }]}>
+                  <Text style={[styles.storyCount, { color: colors.mauve }]}>{m.rankDelta}</Text>
+                  <Text style={[styles.storyLabel, { color: colors.textMuted }]}>sıra</Text>
+                </View>
+              }
+            />
+          ))}
 
-      {unlocked && muted.map((m) => (
-        <UserRow
-          key={m.id}
-          item={{ ...m, hint: `Son görülme: ${m.lastSeen}` }}
-          right={
-            <View style={[styles.storyBadge, { backgroundColor: colors.mauve + '20' }]}>
-              <Text style={[styles.storyCount, { color: colors.mauve }]}>{m.rankDelta}</Text>
-              <Text style={[styles.storyLabel, { color: colors.textMuted }]}>sıra</Text>
+          {!unlocked && locked.length > 0 && (
+            <View style={styles.lockedSection}>
+              {[0, 1, 2].map((i) => <BlurredRow key={i} />)}
+              <LockOverlay onUnlock={() => setUnlocked(true)} />
             </View>
-          }
-        />
-      ))}
+          )}
+
+          {unlocked && locked.map((m) => (
+            <UserRow
+              key={m.id}
+              item={{ ...m, hint: `Son görülme: ${m.lastSeen}` }}
+              right={
+                <View style={[styles.storyBadge, { backgroundColor: colors.mauve + '20' }]}>
+                  <Text style={[styles.storyCount, { color: colors.mauve }]}>{m.rankDelta}</Text>
+                  <Text style={[styles.storyLabel, { color: colors.textMuted }]}>sıra</Text>
+                </View>
+              }
+            />
+          ))}
+        </>
+      )}
     </View>
   );
 }
@@ -254,7 +289,7 @@ function UnfollowersCard({ unfollowers }) {
 
       {!unlocked && locked.length > 0 && (
         <View style={styles.lockedSection}>
-          {locked.slice(0, 3).map((_, i) => <BlurredRow key={i} />)}
+          {[0, 1, 2].map((i) => <BlurredRow key={i} />)}
           <LockOverlay onUnlock={() => setUnlocked(true)} />
         </View>
       )}
@@ -422,8 +457,14 @@ const styles = StyleSheet.create({
   mutualPill: { borderRadius: RADIUS.md, paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm, marginBottom: SPACING.md, alignSelf: 'flex-start' },
   mutualText: { fontSize: 12, fontWeight: '700' },
 
+  // Empty state
+  emptyState:  { borderRadius: RADIUS.md, padding: SPACING.lg, alignItems: 'center', marginTop: SPACING.sm },
+  emptyEmoji:  { fontSize: 36, marginBottom: SPACING.sm },
+  emptyTitle:  { fontSize: 16, fontWeight: '800', marginBottom: 4 },
+  emptyText:   { fontSize: 13, textAlign: 'center', lineHeight: 20 },
+
   // Locked section
-  lockedSection: { marginTop: SPACING.xs, position: 'relative', overflow: 'hidden', borderRadius: RADIUS.md },
+  lockedSection: { marginTop: SPACING.xs, position: 'relative', overflow: 'hidden', borderRadius: RADIUS.md, minHeight: 170 },
   blurRow:   { flexDirection: 'row', alignItems: 'center', paddingVertical: SPACING.md, gap: SPACING.md, opacity: 0.3 },
   blurCircle: { width: 44, height: 44, borderRadius: 22 },
   blurLine:   { height: 12, width: '65%', borderRadius: 6 },
