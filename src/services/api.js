@@ -73,7 +73,7 @@ async function request(path, options = {}, retry = true) {
     res = await fetch(`${BASE_URL}${path}`, { ...options, headers });
   } catch (networkErr) {
     const err = new Error(
-      'Backend\'e bağlanılamıyor. Sunucunun çalıştığını ve IP adresinin doğru olduğunu kontrol et.'
+      'Bağlantı hatası. Lütfen internet bağlantını kontrol edip tekrar dene.'
     );
     err.status = 0;
     throw err;
@@ -144,6 +144,24 @@ export const authApi = {
     const data = await request('/auth/verify-2fa', {
       method: 'POST',
       body: JSON.stringify({ username, code, identifier }),
+    });
+    await tokenStore.save(data.access_token, data.refresh_token);
+    return data;
+  },
+
+  async sessionLogin(sessionId) {
+    const data = await request('/auth/session-login', {
+      method: 'POST',
+      body: JSON.stringify({ session_id: sessionId }),
+    });
+    await tokenStore.save(data.access_token, data.refresh_token);
+    return data;
+  },
+
+  async webviewLogin(payload) {
+    const data = await request('/auth/webview-login', {
+      method: 'POST',
+      body: JSON.stringify(payload),
     });
     await tokenStore.save(data.access_token, data.refresh_token);
     return data;

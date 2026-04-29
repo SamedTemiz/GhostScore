@@ -1,6 +1,9 @@
+import { useState } from 'react';
 import { View, Text, FlatList, StyleSheet, TouchableOpacity, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { HugeiconsIcon } from '@hugeicons/react-native';
+import { ArrowLeft02Icon, BadgeAlertIcon } from '@hugeicons/core-free-icons';
 import { SPACING, RADIUS } from '../constants/theme';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
@@ -8,10 +11,14 @@ import { useAuth } from '../context/AuthContext';
 const GHOST = require('../../assets/main/Surprised_Ghost.png');
 
 function UnfollowerRow({ item, colors }) {
+  const [imgErr, setImgErr] = useState(false);
   const mutual = item.wasFollowedBack;
   return (
     <View style={[styles.row, { borderBottomColor: colors.border }]}>
-      <Image source={{ uri: item.profilePic }} style={[styles.avatar, { backgroundColor: colors.cardTeal }]} />
+      {item.profilePic && !imgErr
+        ? <Image source={{ uri: item.profilePic }} style={[styles.avatar, { backgroundColor: colors.cardTeal }]} onError={() => setImgErr(true)} />
+        : <View style={[styles.avatar, { backgroundColor: colors.cardTeal }]} />
+      }
       <View style={styles.info}>
         <Text style={[styles.username, { color: colors.textPrimary }]}>@{item.username}</Text>
         <Text style={[styles.subtitle, { color: colors.textMuted }]}>{item.unfollowedAt}</Text>
@@ -40,7 +47,7 @@ export default function UnfollowersScreen({ navigation }) {
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-          <Ionicons name="arrow-back" size={22} color={colors.textSecondary} />
+          <HugeiconsIcon icon={ArrowLeft02Icon} size={22} color={colors.textSecondary} />
         </TouchableOpacity>
         <View>
           <Text style={[styles.titleMuted, { color: colors.textSecondary }]}>Takibi bırakanlar</Text>
@@ -54,7 +61,7 @@ export default function UnfollowersScreen({ navigation }) {
           <Text style={[styles.bigCount, { color: colors.teal }]}>{unfollowers.length}</Text>
           <Text style={[styles.bigCountLabel, { color: colors.textSecondary }]}>Unfollower bulundu</Text>
           <View style={[styles.pill, { backgroundColor: colors.teal + '22', flexDirection: 'row', alignItems: 'center', gap: 4 }]}>
-            <Ionicons name="alert-circle-outline" size={14} color={colors.teal} />
+            <HugeiconsIcon icon={BadgeAlertIcon} size={14} color={colors.teal} />
             <Text style={{ fontSize: 11, color: colors.teal, fontWeight: '600' }}>
               {mutual} karşılıklı
             </Text>

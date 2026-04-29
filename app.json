@@ -18,6 +18,7 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#13131F"
       },
+      "privacyPolicyUrl": "https://ghostscore.app/privacy",
       "permissions": [],
       "blockedPermissions": [
         "android.permission.RECORD_AUDIO",
@@ -31,8 +32,11 @@
       "supportsTablet": false,
       "bundleIdentifier": "com.ghostscore.app"
     },
+    "scheme": "ghostscore",
+    "newArchEnabled": false,
     "plugins": [
-      "expo-font"
+      "expo-font",
+      "expo-web-browser"
     ],
     "extra": {
       "privacyPolicyUrl": "https://ghostscore.app/privacy"

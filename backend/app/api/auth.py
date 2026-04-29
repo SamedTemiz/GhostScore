@@ -1,11 +1,13 @@
 """
 Auth endpoint'leri:
-POST /auth/login         - Instagram kullanıcı adı + şifre ile giriş
-POST /auth/verify-2fa   - İki faktörlü doğrulama
-POST /auth/refresh      - Access token yenile
-DELETE /auth/logout     - Oturumu kapat, token'ı iptal et
+POST /auth/login          - Instagram kullanıcı adı + şifre ile giriş
+POST /auth/webview-login  - WebView üzerinden Instagram ile giriş (şifresiz)
+POST /auth/verify-2fa    - İki faktörlü doğrulama
+POST /auth/refresh       - Access token yenile
+DELETE /auth/logout      - Oturumu kapat, token'ı iptal et
 """
 import hashlib
+import json
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Request, Depends, status
@@ -17,18 +19,25 @@ from app.config import get_settings
 from app.core.security import (
     create_access_token,
     create_refresh_token,
-    decrypt_instagram_session,
     decode_token,
     encrypt_instagram_session,
     safe_user_id,
 )
-from app.core.instagram import login_with_password, verify_2fa
+from app.core.instagram import login_with_password, verify_2fa, login_with_sessionid, fetch_analysis_data
 from app.db.supabase import get_supabase
 from app.models.schemas import (
     InstagramLoginRequest,
     TwoFactorRequest,
     RefreshTokenRequest,
     TokenResponse,
+    WebViewLoginRequest,
+    WebViewLoginResponse,
+    SessionLoginRequest,
+    AnalysisResponse,
+    ProfileData,
+    StalkerItem,
+    GhostFollowerItem,
+    UnfollowerItem,
 )
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -39,6 +48,14 @@ security = HTTPBearer()
 
 def _hash_ip(ip: str) -> str:
     return hashlib.sha256(ip.encode()).hexdigest()[:12]
+
+
+def _compute_ghost_score(followers: int, following: int, posts: int) -> int:
+    if followers == 0:
+        return 0
+    ratio_score = min(40, int((followers / max(following, 1)) * 20))
+    post_score  = min(30, int((posts / 50) * 30))
+    return min(100, ratio_score + post_score)
 
 
 async def get_current_user_id(
@@ -52,6 +69,216 @@ async def get_current_user_id(
             detail="Geçersiz veya süresi dolmuş token",
         )
     return user_id
+
+
+# ── POST /auth/session-login ─────────────────────────────────
+
+@router.post("/session-login", response_model=WebViewLoginResponse, response_model_by_alias=True, status_code=200)
+async def session_login(request: Request, body: SessionLoginRequest):
+    """
+    WebView'dan alınan sessionid cookie ile giriş.
+    Şifre hiç alınmaz. instagrapi ile full analiz yapılır.
+    """
+    client_ip = request.client.host if request.client else "unknown"
+    log.info("session_login_attempt", ip_hash=_hash_ip(client_ip))
+
+    try:
+        cl = await login_with_sessionid(body.session_id)
+    except (ValueError, RuntimeError) as e:
+        raise HTTPException(status_code=401, detail=str(e))
+
+    try:
+        data = await fetch_analysis_data(cl)
+    except (ValueError, RuntimeError) as e:
+        raise HTTPException(status_code=503, detail=str(e))
+
+    profile    = data["profile"]
+    stalkers   = data["stalkers"]
+    ghost_followers = data["ghost_followers"]
+    unfollowers = data["unfollowers"]
+    username   = profile["username"]
+
+    session_data      = cl.get_settings()
+    encrypted_session = encrypt_instagram_session(json.dumps(session_data))
+
+    db = get_supabase()
+    existing = (
+        db.table("users")
+        .select("id, analysis_count")
+        .eq("ig_username", username)
+        .eq("is_deleted", False)
+        .execute()
+    )
+
+    if existing.data:
+        user_id = existing.data[0]["id"]
+        db.table("users").update({"ig_session_encrypted": encrypted_session}).eq("id", user_id).execute()
+    else:
+        new_user = (
+            db.table("users")
+            .insert({"ig_username": username, "ig_session_encrypted": encrypted_session})
+            .execute()
+        )
+        user_id = new_user.data[0]["id"]
+
+    now_iso      = datetime.now(timezone.utc).isoformat()
+    analysis_row = (
+        db.table("analyses")
+        .insert({
+            "user_id": user_id,
+            "ghost_score":        profile["ghost_score"],
+            "followers_count":    profile["followers"],
+            "following_count":    profile["following"],
+            "posts_count":        profile["posts"],
+            "visibility_score":   profile["visibility_score"],
+            "stalkers_count":     len(stalkers),
+            "muted_count":        len(ghost_followers),
+            "unfollowers_count":  len(unfollowers),
+            "stalkers_encrypted":    encrypt_instagram_session(json.dumps(stalkers)),
+            "muted_encrypted":       encrypt_instagram_session(json.dumps(ghost_followers)),
+            "unfollowers_encrypted": encrypt_instagram_session(json.dumps(unfollowers)),
+        })
+        .execute()
+    )
+
+    analysis_id = analysis_row.data[0]["id"]
+    created_at  = analysis_row.data[0]["created_at"]
+
+    db.table("users").update({
+        "last_analysis_at": now_iso,
+        "analysis_count": (existing.data[0].get("analysis_count") or 0) + 1 if existing.data else 1,
+    }).eq("id", user_id).execute()
+
+    db.table("audit_log").insert({
+        "user_id_hash": safe_user_id(user_id),
+        "action": "session_login",
+        "ip_hash": _hash_ip(client_ip),
+    }).execute()
+
+    log.info("session_login_success", user_hash=safe_user_id(user_id))
+
+    return WebViewLoginResponse(
+        access_token=create_access_token(user_id),
+        refresh_token=create_refresh_token(user_id),
+        analysis=AnalysisResponse(
+            profile=ProfileData(**profile),
+            stalkers=[StalkerItem(**s) for s in stalkers],
+            ghost_followers=[GhostFollowerItem(**g) for g in ghost_followers],
+            unfollowers=[UnfollowerItem(**u) for u in unfollowers],
+            analysis_id=analysis_id,
+            created_at=created_at,
+        ),
+    )
+
+
+# ── POST /auth/webview-login ──────────────────────────────────
+
+@router.post("/webview-login", response_model=WebViewLoginResponse, response_model_by_alias=True, status_code=200)
+async def webview_login(request: Request, body: WebViewLoginRequest):
+    """
+    WebView üzerinden Instagram ile giriş.
+    Şifre hiç alınmaz — veri doğrudan Instagram web API'sinden gelir.
+    """
+    client_ip = request.client.host if request.client else "unknown"
+    log.info("webview_login_attempt", ip_hash=_hash_ip(client_ip))
+
+    username = body.profile.username.strip().lstrip("@").lower()
+    db = get_supabase()
+
+    existing = (
+        db.table("users")
+        .select("id")
+        .eq("ig_username", username)
+        .eq("is_deleted", False)
+        .execute()
+    )
+
+    if existing.data:
+        user_id = existing.data[0]["id"]
+    else:
+        new_user = (
+            db.table("users")
+            .insert({"ig_username": username})
+            .execute()
+        )
+        user_id = new_user.data[0]["id"]
+
+    follower_ids  = {u.id for u in body.followers}
+    following_map = {u.id: u for u in body.following}
+    unfollower_ids = set(following_map.keys()) - follower_ids
+
+    unfollowers = [
+        {
+            "id": uid,
+            "username": following_map[uid].username,
+            "profile_pic": following_map[uid].profile_pic,
+            "unfollowed_at": "Yakın zamanda",
+            "was_followed_back": False,
+        }
+        for uid in list(unfollower_ids)[:20]
+    ]
+
+    followers_count = body.profile.followers
+    following_count = body.profile.following
+    posts_count     = body.profile.posts
+    ghost_score     = _compute_ghost_score(followers_count, following_count, posts_count)
+    visibility_score = min(100, ghost_score + 13)
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    analysis_row = (
+        db.table("analyses")
+        .insert({
+            "user_id": user_id,
+            "ghost_score": ghost_score,
+            "followers_count": followers_count,
+            "following_count": following_count,
+            "posts_count": posts_count,
+            "visibility_score": visibility_score,
+            "stalkers_count": 0,
+            "muted_count": 0,
+            "unfollowers_count": len(unfollowers),
+            "stalkers_encrypted":   encrypt_instagram_session(json.dumps([])),
+            "muted_encrypted":      encrypt_instagram_session(json.dumps([])),
+            "unfollowers_encrypted": encrypt_instagram_session(json.dumps(unfollowers)),
+        })
+        .execute()
+    )
+
+    analysis_id = analysis_row.data[0]["id"]
+    created_at  = analysis_row.data[0]["created_at"]
+
+    db.table("users").update({
+        "last_analysis_at": now_iso,
+        "analysis_count": (existing.data[0].get("analysis_count") or 0) + 1 if existing.data else 1,
+    }).eq("id", user_id).execute()
+
+    db.table("audit_log").insert({
+        "user_id_hash": safe_user_id(user_id),
+        "action": "webview_login",
+        "ip_hash": _hash_ip(client_ip),
+    }).execute()
+
+    log.info("webview_login_success", user_hash=safe_user_id(user_id), unfollowers=len(unfollowers))
+
+    return WebViewLoginResponse(
+        access_token=create_access_token(user_id),
+        refresh_token=create_refresh_token(user_id),
+        analysis=AnalysisResponse(
+            profile=ProfileData(
+                username=username,
+                followers=followers_count,
+                following=following_count,
+                posts=posts_count,
+                ghost_score=ghost_score,
+                visibility_score=visibility_score,
+            ),
+            stalkers=[],
+            ghost_followers=[],
+            unfollowers=[UnfollowerItem(**u) for u in unfollowers],
+            analysis_id=analysis_id,
+            created_at=created_at,
+        ),
+    )
 
 
 # ── POST /auth/login ──────────────────────────────────────────
@@ -68,7 +295,7 @@ async def login(request: Request, body: InstagramLoginRequest):
 
     # ── MOCK MOD ─────────────────────────────────────────────────
     if settings.INSTAGRAM_MOCK:
-        log.info("login_mock_mode", username=body.username)
+        log.info("login_mock_mode")
         mock_user_id = f"mock-{body.username}"
         return TokenResponse(
             access_token=create_access_token(mock_user_id),

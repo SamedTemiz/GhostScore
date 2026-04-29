@@ -1,6 +1,9 @@
+import { useState } from 'react';
 import { View, Text, FlatList, StyleSheet, TouchableOpacity, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { HugeiconsIcon } from '@hugeicons/react-native';
+import { ArrowLeft02Icon, ViewIcon } from '@hugeicons/core-free-icons';
 import { SPACING, RADIUS } from '../constants/theme';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
@@ -8,10 +11,14 @@ import { useAuth } from '../context/AuthContext';
 const GHOST = require('../../assets/main/Suspicious_Look.png');
 
 function StalkerRow({ item, index, colors }) {
+  const [imgErr, setImgErr] = useState(false);
   return (
     <View style={[styles.row, { borderBottomColor: colors.border }]}>
       <Text style={[styles.rank, { color: colors.textMuted }]}>#{index + 1}</Text>
-      <Image source={{ uri: item.profilePic }} style={[styles.avatar, { backgroundColor: colors.cardPurple }]} />
+      {item.profilePic && !imgErr
+        ? <Image source={{ uri: item.profilePic }} style={[styles.avatar, { backgroundColor: colors.cardPurple }]} onError={() => setImgErr(true)} />
+        : <View style={[styles.avatar, { backgroundColor: colors.cardPurple }]} />
+      }
       <View style={styles.info}>
         <Text style={[styles.username, { color: colors.textPrimary }]}>@{item.username}</Text>
         <Text style={[styles.subtitle, { color: colors.textMuted }]}>Takip etmiyor</Text>
@@ -35,7 +42,7 @@ export default function StalkersScreen({ navigation }) {
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-          <Ionicons name="arrow-back" size={22} color={colors.textSecondary} />
+          <HugeiconsIcon icon={ArrowLeft02Icon} size={22} color={colors.textSecondary} />
         </TouchableOpacity>
         <View>
           <Text style={[styles.titleMuted, { color: colors.textSecondary }]}>Seni izleyenler</Text>
@@ -49,7 +56,7 @@ export default function StalkersScreen({ navigation }) {
           <Text style={[styles.bigCount, { color: colors.purple }]}>{stalkers.length}</Text>
           <Text style={[styles.bigCountLabel, { color: colors.textSecondary }]}>Stalker bulundu</Text>
           <View style={[styles.pill, { backgroundColor: colors.purple + '22', flexDirection: 'row', alignItems: 'center', gap: 4 }]}>
-            <Ionicons name="eye-outline" size={14} color={colors.purple} />
+            <HugeiconsIcon icon={ViewIcon} size={14} color={colors.purple} />
             <Text style={{ fontSize: 11, color: colors.purple, fontWeight: '600' }}>Story izleyici</Text>
           </View>
         </View>

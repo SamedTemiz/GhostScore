@@ -3,6 +3,7 @@ import {
   View, Text, StyleSheet, TouchableOpacity,
   Dimensions, ScrollView, StatusBar, Animated,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../context/ThemeContext';
 import { SPACING, RADIUS, SHADOWS, GLOSS } from '../constants/theme';
@@ -67,7 +68,7 @@ export default function OnboardingScreen({ navigation }) {
     if (index < SLIDES.length - 1) {
       goTo(index + 1);
     } else {
-      navigation.replace('Welcome');
+      AsyncStorage.setItem('onboarding_done', '1').finally(() => navigation.replace('Login'));
     }
   };
 
@@ -77,7 +78,7 @@ export default function OnboardingScreen({ navigation }) {
     <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]}>
       <StatusBar barStyle="dark-content" />
       {/* Skip */}
-      <TouchableOpacity onPress={() => navigation.replace('Welcome')} style={styles.skipBtn}>
+      <TouchableOpacity onPress={() => navigation.replace('Login')} style={styles.skipBtn}>
         <Text style={[styles.skipText, { color: colors.textMuted }]}>Geç</Text>
       </TouchableOpacity>
 

@@ -1,6 +1,7 @@
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import { HugeiconsIcon } from '@hugeicons/react-native';
+import { ArrowLeft02Icon } from '@hugeicons/core-free-icons';
 import { useTheme } from '../context/ThemeContext';
 import { SPACING, RADIUS } from '../constants/theme';
 
@@ -30,7 +31,7 @@ export default function PrivacyPolicyScreen({ navigation }) {
     <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-          <Ionicons name="arrow-back" size={22} color={colors.textSecondary} />
+          <HugeiconsIcon icon={ArrowLeft02Icon} size={22} color={colors.textSecondary} />
         </TouchableOpacity>
         <View>
           <Text style={[styles.titleMuted, { color: colors.textMuted }]}>GhostScore</Text>

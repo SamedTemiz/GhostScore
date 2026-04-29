@@ -4,6 +4,8 @@ import {
   ScrollView, Dimensions, Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { HugeiconsIcon } from '@hugeicons/react-native';
+import { ViewIcon, UserMinus01Icon, BadgeAlertIcon, LockIcon, ArrowDown01Icon, AlertSquareIcon, Rocket01Icon, ArrowRight01Icon } from '@hugeicons/core-free-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
@@ -32,12 +34,12 @@ function LockOverlay({ onUnlock }) {
   const { colors } = useTheme();
   return (
     <View style={[styles.lockOverlay, { backgroundColor: colors.background + 'EE', borderColor: colors.border }]}>
-      <Ionicons name="lock-closed-outline" size={32} color={colors.textMuted} style={{ marginBottom: SPACING.sm }} />
-      <Text style={[styles.lockTitle, { color: colors.textPrimary }]}>Bu içerik kilitli</Text>
-      <Text style={[styles.lockSub, { color: colors.textMuted }]}>Tüm sonuçları görmek için reklam izle</Text>
-      <TouchableOpacity style={[styles.adBtn, { backgroundColor: colors.gold, flexDirection: 'row', alignItems: 'center', gap: 6 }]} onPress={onUnlock} activeOpacity={0.85}>
-        <Ionicons name="play-circle-outline" size={18} color="#1A1200" />
-        <Text style={styles.adBtnText}>Reklam İzle</Text>
+      <HugeiconsIcon icon={LockIcon} size={32} color={colors.textMuted} style={{ marginBottom: SPACING.sm }} />
+      <Text style={[styles.lockTitle, { color: colors.textPrimary }]}>Tümünü Gör</Text>
+      <Text style={[styles.lockSub, { color: colors.textMuted }]}>Listenin tamamına ulaşmak için devam et</Text>
+      <TouchableOpacity style={[styles.adBtn, { backgroundColor: colors.purple, flexDirection: 'row', alignItems: 'center', gap: 6 }]} onPress={onUnlock} activeOpacity={0.85}>
+        <HugeiconsIcon icon={ArrowDown01Icon} size={18} color="#fff" />
+        <Text style={[styles.adBtnText, { color: '#fff' }]}>Tümünü Göster</Text>
       </TouchableOpacity>
     </View>
   );
@@ -60,9 +62,13 @@ function BlurredRow() {
 // ─── User Row ─────────────────────────────────────────────────────────────────
 function UserRow({ item, right }) {
   const { colors } = useTheme();
+  const [imgErr, setImgErr] = useState(false);
   return (
     <View style={[styles.userRow, { borderBottomColor: colors.border }]}>
-      <Image source={{ uri: item.profilePic }} style={[styles.avatar, { backgroundColor: colors.cardPurple }]} />
+      {item.profilePic && !imgErr
+        ? <Image source={{ uri: item.profilePic }} style={[styles.avatar, { backgroundColor: colors.cardPurple }]} onError={() => setImgErr(true)} />
+        : <View style={[styles.avatar, { backgroundColor: colors.cardPurple }]} />
+      }
       <View style={{ flex: 1 }}>
         <Text style={[styles.username, { color: colors.textPrimary }]}>@{item.username}</Text>
         {item.hint ? <Text style={[styles.usernameHint, { color: colors.textMuted }]}>{item.hint}</Text> : null}
@@ -111,11 +117,14 @@ function ScoreCard({ profile }) {
       </View>
 
       <View style={[styles.hintBox, { backgroundColor: score >= 70 ? colors.teal + '18' : colors.gold + '18' }]}>
-        <Text style={[styles.hintText, { color: score >= 70 ? colors.teal : colors.gold }]}>
-          {score >= 70
-            ? '🔥 Profilini aktif ve etkili kullanıyorsun!'
-            : '👻 Sosyal etkileşimini artırmaya ne dersin?'}
-        </Text>
+        {score >= 70 ? (
+          <Text style={[styles.hintText, { color: colors.teal }]}>🔥 Profilini aktif ve etkili kullanıyorsun!</Text>
+        ) : (
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.sm }}>
+            <Image source={SCORE_GHOST.mid} style={{ width: 22, height: 22 }} resizeMode="contain" />
+            <Text style={[styles.hintText, { color: colors.gold }]}>Sosyal etkileşimini artırmaya ne dersin?</Text>
+          </View>
+        )}
       </View>
     </View>
   );
@@ -135,7 +144,7 @@ function StalkersCard({ stalkers }) {
       </View>
       <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: SPACING.lg }}>
         <Text style={[styles.cardTitle, { color: colors.textPrimary, marginBottom: 0 }]}>{stalkers.length} Kişi{'\n'}Seni İzliyor</Text>
-        <Ionicons name="eye-outline" size={42} color={colors.purple + '40'} />
+        <HugeiconsIcon icon={ViewIcon} size={42} color={colors.purple + '40'} />
       </View>
 
       {visible.map((s) => (
@@ -182,59 +191,63 @@ function StalkersCard({ stalkers }) {
   );
 }
 
-// ─── CARD 3: Muted (fully locked) ────────────────────────────────────────────
-function MutedCard({ muted }) {
+// ─── CARD 3: Engagement Drop (eski "Muted") ───────────────────────────────────
+function MutedCard({ ghostFollowers }) {
   const { colors } = useTheme();
   const [unlocked, setUnlocked] = useState(false);
-  const visible = muted.slice(0, 1);
-  const locked  = muted.slice(1);
+  const visible = ghostFollowers.slice(0, 2);
+  const locked  = ghostFollowers.slice(2);
 
   return (
     <View style={styles.card}>
       <View style={[styles.cardBadge, { backgroundColor: colors.mauve + '25' }]}>
-        <Text style={[styles.cardBadgeText, { color: colors.mauve }]}>MUTE LİSTESİ</Text>
+        <Text style={[styles.cardBadgeText, { color: colors.mauve }]}>HAYALET TAKİPÇİLER</Text>
       </View>
       <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: SPACING.lg }}>
-        <Text style={[styles.cardTitle, { color: colors.textPrimary, marginBottom: 0 }]}>{muted.length} Kişi Seni{'\n'}Sessize Aldı</Text>
-        <Ionicons name="notifications-off-outline" size={42} color={colors.mauve + '40'} />
+        <Text style={[styles.cardTitle, { color: colors.textPrimary, marginBottom: 0 }]}>{ghostFollowers.length} Kişi{'\n'}Hiç Etkileşmedi</Text>
+        <HugeiconsIcon icon={UserMinus01Icon} size={42} color={colors.mauve + '40'} />
       </View>
 
-      {muted.length === 0 ? (
+      <View style={[styles.hintBox, { backgroundColor: colors.mauve + '15', marginBottom: SPACING.md }]}>
+        <Text style={[styles.hintText, { color: colors.mauve }]}>
+          Seni takip ediyor ama son postlarından hiçbirini beğenmedi.
+        </Text>
+      </View>
+
+      {ghostFollowers.length === 0 ? (
         <View style={[styles.emptyState, { backgroundColor: colors.cardMauve }]}>
           <Text style={styles.emptyEmoji}>🎉</Text>
-          <Text style={[styles.emptyTitle, { color: colors.mauve }]}>Temiz görünüyor!</Text>
-          <Text style={[styles.emptyText, { color: colors.textMuted }]}>Seni sessize alan kimse yok.</Text>
+          <Text style={[styles.emptyTitle, { color: colors.mauve }]}>Hayalet yok!</Text>
+          <Text style={[styles.emptyText, { color: colors.textMuted }]}>Tüm takipçilerin son postlarınla etkileşime geçmiş.</Text>
         </View>
       ) : (
         <>
-          {visible.map((m) => (
+          {visible.map((g) => (
             <UserRow
-              key={m.id}
-              item={{ ...m, hint: `Son görülme: ${m.lastSeen}` }}
+              key={g.id}
+              item={{ ...g, hint: 'Son postlarda beğeni yok' }}
               right={
                 <View style={[styles.storyBadge, { backgroundColor: colors.mauve + '20' }]}>
-                  <Text style={[styles.storyCount, { color: colors.mauve }]}>{m.rankDelta}</Text>
-                  <Text style={[styles.storyLabel, { color: colors.textMuted }]}>sıra</Text>
+                  <Text style={[styles.storyCount, { color: colors.mauve }]}>0</Text>
+                  <Text style={[styles.storyLabel, { color: colors.textMuted }]}>beğeni</Text>
                 </View>
               }
             />
           ))}
-
           {!unlocked && locked.length > 0 && (
             <View style={styles.lockedSection}>
               {[0, 1, 2].map((i) => <BlurredRow key={i} />)}
               <LockOverlay onUnlock={() => setUnlocked(true)} />
             </View>
           )}
-
-          {unlocked && locked.map((m) => (
+          {unlocked && locked.map((g) => (
             <UserRow
-              key={m.id}
-              item={{ ...m, hint: `Son görülme: ${m.lastSeen}` }}
+              key={g.id}
+              item={{ ...g, hint: 'Son postlarda beğeni yok' }}
               right={
                 <View style={[styles.storyBadge, { backgroundColor: colors.mauve + '20' }]}>
-                  <Text style={[styles.storyCount, { color: colors.mauve }]}>{m.rankDelta}</Text>
-                  <Text style={[styles.storyLabel, { color: colors.textMuted }]}>sıra</Text>
+                  <Text style={[styles.storyCount, { color: colors.mauve }]}>0</Text>
+                  <Text style={[styles.storyLabel, { color: colors.textMuted }]}>beğeni</Text>
                 </View>
               }
             />
@@ -260,11 +273,11 @@ function UnfollowersCard({ unfollowers }) {
       </View>
       <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: SPACING.lg }}>
         <Text style={[styles.cardTitle, { color: colors.textPrimary, marginBottom: 0 }]}>{unfollowers.length} Kişi{'\n'}Takibi Bıraktı</Text>
-        <Ionicons name="alert-circle-outline" size={42} color={colors.teal + '40'} />
+        <HugeiconsIcon icon={BadgeAlertIcon} size={42} color={colors.teal + '40'} />
       </View>
 
       <View style={[styles.mutualPill, { backgroundColor: colors.gold + '20', flexDirection: 'row', alignItems: 'center', gap: 6 }]}>
-        <Ionicons name="warning-outline" size={14} color={colors.gold} />
+        <HugeiconsIcon icon={AlertSquareIcon} size={14} color={colors.gold} />
         <Text style={[styles.mutualText, { color: colors.gold }]}>
           {mutual} karşılıklı takip bıraktı
         </Text>
@@ -321,15 +334,15 @@ export default function ResultsScreen({ navigation }) {
   const scrollRef = useRef(null);
   const [cardIndex, setCardIndex] = useState(0);
 
-  const profile    = data?.profile    ?? {};
-  const stalkers   = data?.stalkers   ?? [];
-  const muted      = data?.muted      ?? [];
-  const unfollowers = data?.unfollowers ?? [];
+  const profile        = data?.profile        ?? {};
+  const stalkers       = data?.stalkers       ?? [];
+  const ghostFollowers = data?.ghostFollowers ?? [];
+  const unfollowers    = data?.unfollowers    ?? [];
 
   const CARDS = [
     { key: 'score',       component: <ScoreCard profile={profile} /> },
     { key: 'stalkers',    component: <StalkersCard stalkers={stalkers} /> },
-    { key: 'muted',       component: <MutedCard muted={muted} /> },
+    { key: 'muted',       component: <MutedCard ghostFollowers={ghostFollowers} /> },
     { key: 'unfollowers', component: <UnfollowersCard unfollowers={unfollowers} /> },
   ];
 
@@ -337,7 +350,7 @@ export default function ResultsScreen({ navigation }) {
 
   const next = () => {
     if (isLast) {
-      navigation.replace('Main');
+      navigation.reset({ index: 0, routes: [{ name: 'Main' }] });
     } else {
       const n = cardIndex + 1;
       scrollRef.current?.scrollTo({ x: n * width, animated: true });
@@ -390,11 +403,11 @@ export default function ResultsScreen({ navigation }) {
         activeOpacity={0.85}
       >
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          {isLast && <Ionicons name="rocket-outline" size={20} color="#FFF" />}
+          {isLast && <HugeiconsIcon icon={Rocket01Icon} size={20} color="#FFF" />}
           <Text style={styles.nextBtnText}>
             {isLast ? 'Dashboard\'a Geç' : 'Sonraki'}
           </Text>
-          {!isLast && <Ionicons name="arrow-forward" size={20} color="#FFF" />}
+          {!isLast && <HugeiconsIcon icon={ArrowRight01Icon} size={20} color="#FFF" />}
         </View>
       </TouchableOpacity>
     </SafeAreaView>

@@ -29,6 +29,7 @@ from instagrapi.exceptions import (
     UnknownError,
     SelectContactPointRecoveryForm,
     RecaptchaChallengeForm,
+    ChallengeUnknownStep,
 )
 
 log = structlog.get_logger()
@@ -47,13 +48,32 @@ async def _safe_delay():
     await asyncio.sleep(delay)
 
 
-def _build_client() -> Client:
+_DEVICE = {
+    "manufacturer": "samsung",
+    "model": "SM-A546B",
+    "android_version": 31,
+    "android_release": "12",
+    "dpi": "420dpi",
+    "resolution": "1080x2400",
+    "cpu": "s5e8535",
+}
+
+_USER_AGENT = (
+    "Instagram 319.0.0.0.75 Android "
+    "(31/12; 420dpi; 1080x2400; samsung; SM-A546B; a54x; s5e8535; en_US; 563859995)"
+)
+
+
+def _build_client(settings: dict | None = None) -> Client:
     cl = Client()
     cl.delay_range = [MIN_REQUEST_DELAY, MAX_REQUEST_DELAY]
-    cl.set_user_agent(
-        "Instagram 319.0.0.0.75 Android "
-        "(31/12; 420dpi; 1080x2400; samsung; SM-A546B; a54x; s5e8535; en_US; 563859995)"
-    )
+    if settings:
+        # Kayıtlı session varsa tam fingerprint geri yükle (cihaz değişmesin)
+        cl.set_settings(settings)
+    else:
+        # İlk login: sabit Samsung cihazı kullan (rastgele cihaz = ban riski)
+        cl.set_device(_DEVICE)
+        cl.set_user_agent(_USER_AGENT)
     return cl
 
 
@@ -103,11 +123,11 @@ async def login_with_password(username: str, password: str) -> InstagramLoginRes
         log.warning("instagram_login_user_not_found")
         raise ValueError("Kullanıcı bulunamadı")
 
-    except (ChallengeRequired, SelectContactPointRecoveryForm, RecaptchaChallengeForm):
+    except (ChallengeRequired, ChallengeUnknownStep, SelectContactPointRecoveryForm, RecaptchaChallengeForm):
         log.warning("instagram_login_challenge_required")
         raise RuntimeError(
-            "Instagram hesap doğrulaması gerekiyor. "
-            "Önce Instagram uygulamasından giriş yap ve e-posta/SMS doğrulamasını tamamla."
+            "Instagram güvenlik doğrulaması istedi. "
+            "Lütfen önce Instagram uygulamasını açıp giriş yap, ardından buraya tekrar dön ve tekrar dene."
         )
 
     except UnknownError as e:
@@ -125,7 +145,7 @@ async def login_with_password(username: str, password: str) -> InstagramLoginRes
     except Exception as e:
         log.error("instagram_login_error", error_type=type(e).__name__, detail=str(e)[:120])
         raise RuntimeError(
-            f"Instagram bağlantısı kurulamadı ({type(e).__name__}). "
+            "Instagram bağlantısı kurulamadı. "
             "Lütfen birkaç dakika bekleyip tekrar dene."
         )
 
@@ -155,6 +175,22 @@ async def verify_2fa(username: str, code: str, identifier: str) -> InstagramLogi
         raise ValueError("2FA kodu geçersiz veya süresi dolmuş")
 
 
+async def login_with_sessionid(session_id: str) -> Client:
+    """
+    WebView'dan alınan sessionid cookie ile Instagram'a bağlanır.
+    """
+    cl = _build_client()
+    try:
+        await asyncio.to_thread(cl.login_by_sessionid, session_id)
+        log.info("instagram_sessionid_login_success")
+        return cl
+    except LoginRequired:
+        raise ValueError("Session süresi dolmuş. Yeniden giriş gerekiyor.")
+    except Exception as e:
+        log.error("instagram_sessionid_login_error", error_type=type(e).__name__, detail=str(e)[:80])
+        raise RuntimeError(f"Instagram bağlantısı kurulamadı: {type(e).__name__}")
+
+
 async def login_with_session(session_json: str) -> Client:
     """
     Mevcut session ile Instagram client'ı yeniden oluşturur.
@@ -163,10 +199,10 @@ async def login_with_session(session_json: str) -> Client:
     Instagram tarafında hata tetikler. Bunun yerine account_info()
     ile session geçerliliğini kontrol ediyoruz.
     """
-    cl = _build_client()
     try:
         session_data = json.loads(session_json)
-        cl.set_settings(session_data)
+        # Kayıtlı fingerprint ile client oluştur — cihaz değişmesin
+        cl = _build_client(settings=session_data)
         # Session geçerliliğini hafif bir çağrıyla doğrula
         await asyncio.to_thread(cl.account_info)
         return cl
@@ -180,89 +216,139 @@ async def login_with_session(session_json: str) -> Client:
 
 # ── Analiz ───────────────────────────────────────────────────────────────────
 
+async def _safe_fetch(coro, label: str, default=None):
+    """Her API çağrısını ayrı yakalar — bir endpoint başarısız olursa analiz durmuyor."""
+    try:
+        return await coro
+    except Exception as e:
+        log.warning("api_call_failed", label=label, error_type=type(e).__name__, detail=str(e)[:100])
+        return default
+
+
 async def fetch_analysis_data(cl: Client) -> dict:
     """
     Instagram'dan analiz verilerini çeker.
-    Her istek arası delay uygulanır.
-    Tüm senkron çağrılar asyncio.to_thread() ile thread pool'a taşınır.
+    Her endpoint bağımsız try/except ile sarılı — bir endpoint 400/403 dönerse
+    diğerleri çalışmaya devam eder, kısmi veri döner.
     """
-    try:
-        await _safe_delay()
-        user_info = await asyncio.to_thread(cl.account_info)
+    # Profil bilgisi — cache'siz çek, Account değil User objesi gelsin
+    user_info = await asyncio.to_thread(cl.user_info, cl.user_id, False)
+    if not user_info:
+        raise RuntimeError("Profil bilgisi alınamadı")
 
-        # Story izleyiciler (stalker tespiti)
-        await _safe_delay()
-        stories = await asyncio.to_thread(cl.user_stories, cl.user_id)
+    followers_count  = user_info.follower_count
+    following_count  = user_info.following_count
+    posts_count      = user_info.media_count
+    profile_pic_url  = str(user_info.profile_pic_url) if user_info.profile_pic_url else ""
 
-        stalkers = []
-        for story in stories[:3]:  # Son 3 story (performans)
+    # ── Takipçi / takip listesi ────────────────────────────────
+    await _safe_delay()
+    followers_map: dict = await _safe_fetch(
+        asyncio.to_thread(cl.user_followers, cl.user_id, amount=50),
+        label="user_followers", default={},
+    )
+
+    await _safe_delay()
+    following_map: dict = await _safe_fetch(
+        asyncio.to_thread(cl.user_following, cl.user_id, amount=50),
+        label="user_following", default={},
+    )
+
+    follower_ids  = set(followers_map.keys())
+    following_ids = set(following_map.keys())
+    unfollower_ids = following_ids - follower_ids
+
+    unfollowers = []
+    for uid in list(unfollower_ids)[:20]:
+        u = following_map.get(uid)
+        if u:
+            unfollowers.append({
+                "id": str(uid),
+                "username": u.username,
+                "profile_pic": str(u.profile_pic_url) if u.profile_pic_url else "",
+                "unfollowed_at": "Yakın zamanda",
+                "was_followed_back": uid in follower_ids,
+            })
+
+    # ── Story izleyiciler (stalker tespiti) ────────────────────
+    stalkers = []
+    stories = await _safe_fetch(
+        asyncio.to_thread(cl.user_stories, cl.user_id),
+        label="user_stories", default=[],
+    )
+    for story in (stories or [])[:2]:
+        await _safe_delay()
+        viewers = await _safe_fetch(
+            asyncio.to_thread(cl.story_viewers, story.pk),
+            label="story_viewers", default=[],
+        )
+        for viewer in (viewers or [])[:30]:
+            try:
+                friendship = await asyncio.to_thread(cl.user_friendship_v1, viewer.pk)
+                if not friendship.following:
+                    stalkers.append({
+                        "id": str(viewer.pk),
+                        "username": viewer.username,
+                        "profile_pic": str(viewer.profile_pic_url) if viewer.profile_pic_url else "",
+                        "viewed_stories": 1,
+                        "is_following": False,
+                    })
+            except Exception:
+                continue
+
+    # ── Hayalet takipçi tespiti ────────────────────────────────
+    # Son 4 post → beğenenleri topla → hiç beğenmeyenler = ghost follower
+    ghost_followers = []
+    if posts_count > 0:
+        recent_media = await _safe_fetch(
+            asyncio.to_thread(cl.user_medias, cl.user_id, 4),
+            label="user_medias", default=[],
+        )
+        active_liker_ids: set = set()
+        for media in (recent_media or [])[:4]:
             await _safe_delay()
-            viewers = await asyncio.to_thread(cl.story_viewers, story.pk)
-            for viewer in viewers[:50]:
-                await _safe_delay()
-                try:
-                    friendship = await asyncio.to_thread(cl.user_friendship_v1, viewer.pk)
-                    if not friendship.following:
-                        stalkers.append({
-                            "id": str(viewer.pk),
-                            "username": viewer.username,
-                            "profile_pic": str(viewer.profile_pic_url) if viewer.profile_pic_url else "",
-                            "viewed_stories": 1,
-                            "is_following": False,
-                        })
-                except Exception:
-                    continue
+            likers = await _safe_fetch(
+                asyncio.to_thread(cl.media_likers, media.pk),
+                label="media_likers", default=[],
+            )
+            for liker in (likers or []):
+                active_liker_ids.add(str(liker.pk))
 
-        await _safe_delay()
-        followers = await asyncio.to_thread(cl.user_followers, cl.user_id, amount=500)
-        await _safe_delay()
-        following = await asyncio.to_thread(cl.user_following, cl.user_id, amount=500)
-
-        follower_ids = set(followers.keys())
-        following_ids = set(following.keys())
-
-        unfollower_ids = following_ids - follower_ids
-        unfollowers = []
-        for uid in list(unfollower_ids)[:20]:
-            u = following.get(uid)
-            if u:
-                unfollowers.append({
+        # İlk 150 takipçiyi kontrol et (performans limiti)
+        checked = list(followers_map.items())[:150]
+        for uid, u in checked:
+            if str(uid) not in active_liker_ids:
+                ghost_followers.append({
                     "id": str(uid),
                     "username": u.username,
                     "profile_pic": str(u.profile_pic_url) if u.profile_pic_url else "",
-                    "unfollowed_at": "Yakın zamanda",
-                    "was_followed_back": uid in follower_ids,
+                    "posts_liked": 0,
                 })
 
-        followers_count = user_info.follower_count
-        following_count = user_info.following_count
-        posts_count = user_info.media_count
-        ghost_score = _calculate_ghost_score(
-            followers=followers_count,
-            following=following_count,
-            posts=posts_count,
-            stalker_ratio=len(stalkers) / max(followers_count, 1),
-        )
+    # ── Skor hesabı ────────────────────────────────────────────
+    ghost_ratio = len(ghost_followers) / max(len(followers_map), 1)
+    ghost_score = _calculate_ghost_score(
+        followers=followers_count,
+        following=following_count,
+        posts=posts_count,
+        stalker_ratio=len(stalkers) / max(followers_count, 1),
+        ghost_ratio=ghost_ratio,
+    )
 
-        return {
-            "profile": {
-                "username": user_info.username,
-                "followers": followers_count,
-                "following": following_count,
-                "posts": posts_count,
-                "ghost_score": ghost_score,
-                "visibility_score": min(100, ghost_score + 13),
-            },
-            "stalkers": stalkers[:10],
-            "muted": [],
-            "unfollowers": unfollowers[:20],
-        }
-
-    except LoginRequired:
-        raise ValueError("Oturum süresi dolmuş")
-    except Exception as e:
-        log.error("fetch_analysis_error", error_type=type(e).__name__, detail=str(e)[:120])
-        raise RuntimeError(f"Analiz sırasında hata oluştu: {type(e).__name__}")
+    return {
+        "profile": {
+            "username": user_info.username,
+            "profile_pic": profile_pic_url,
+            "followers": followers_count,
+            "following": following_count,
+            "posts": posts_count,
+            "ghost_score": ghost_score,
+            "visibility_score": min(100, ghost_score + 13),
+        },
+        "stalkers": stalkers[:10],
+        "ghost_followers": ghost_followers[:50],
+        "unfollowers": unfollowers[:20],
+    }
 
 
 def _calculate_ghost_score(
@@ -270,15 +356,18 @@ def _calculate_ghost_score(
     following: int,
     posts: int,
     stalker_ratio: float,
+    ghost_ratio: float = 0.0,
 ) -> int:
     if followers == 0:
         return 0
 
-    ratio_score = min(40, int((followers / max(following, 1)) * 20))
-    post_score = min(30, int((posts / 50) * 30))
-    stalker_score = min(30, int(stalker_ratio * 100))
+    ratio_score   = min(35, int((followers / max(following, 1)) * 17))
+    post_score    = min(25, int((posts / 50) * 25))
+    stalker_score = min(20, int(stalker_ratio * 100))
+    # Ghost oranı düşükse skor yükselir (az hayalet = iyi etkileşim)
+    engagement_score = min(20, int((1 - ghost_ratio) * 20))
 
-    return min(100, ratio_score + post_score + stalker_score)
+    return min(100, ratio_score + post_score + stalker_score + engagement_score)
 
 
 # ── Mock veri (INSTAGRAM_MOCK=true olduğunda kullanılır) ──────────────────────
@@ -286,6 +375,7 @@ def _calculate_ghost_score(
 MOCK_ANALYSIS_DATA = {
     "profile": {
         "username": "mock_user",
+        "profile_pic": "",
         "followers": 842,
         "following": 310,
         "posts": 67,
@@ -297,7 +387,13 @@ MOCK_ANALYSIS_DATA = {
         {"id": "102", "username": "ghost_reader_2",   "profile_pic": "", "viewed_stories": 3, "is_following": False},
         {"id": "103", "username": "lurker_99",         "profile_pic": "", "viewed_stories": 2, "is_following": False},
     ],
-    "muted": [],
+    "ghost_followers": [
+        {"id": "301", "username": "phantom_user_1",  "profile_pic": "", "posts_liked": 0},
+        {"id": "302", "username": "invisible_acc_2", "profile_pic": "", "posts_liked": 0},
+        {"id": "303", "username": "ghost_follow_3",  "profile_pic": "", "posts_liked": 0},
+        {"id": "304", "username": "shadow_user_4",   "profile_pic": "", "posts_liked": 0},
+        {"id": "305", "username": "lurk_master_5",   "profile_pic": "", "posts_liked": 0},
+    ],
     "unfollowers": [
         {"id": "201", "username": "ex_follower_1", "profile_pic": "", "unfollowed_at": "3 gün önce",    "was_followed_back": True},
         {"id": "202", "username": "ghost_gone_2",  "profile_pic": "", "unfollowed_at": "1 hafta önce",  "was_followed_back": True},

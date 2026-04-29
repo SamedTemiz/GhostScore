@@ -6,11 +6,61 @@ import {
 
 const MASCOT = require('../../assets/main/Default_Pose.png');
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import { HugeiconsIcon } from '@hugeicons/react-native';
+import { ViewIcon, NotificationBlock01Icon, BadgeAlertIcon } from '@hugeicons/core-free-icons';
 import { SPACING, RADIUS, DARK_COLORS, LIGHT_COLORS, SHADOWS, GLOSS } from '../constants/theme';
 
-const { width } = Dimensions.get('window');
+const { width, height } = Dimensions.get('window');
 const CARD_W = width * 0.78;
+
+const GHOST_ASSETS = [
+  require('../../assets/main/Top_View.png'),
+  require('../../assets/main/Left_Profile.png'),
+  require('../../assets/main/Right_Profile.png'),
+  require('../../assets/main/Shy_Mode.png'),
+  require('../../assets/main/Surprised_Ghost.png'),
+  require('../../assets/main/Suspicious_Look.png'),
+  require('../../assets/main/Happy_Spectator.png'),
+];
+
+function BackgroundGhost({ delay = 0 }) {
+  const xAnim    = useRef(new Animated.Value(-150)).current;
+  const ghostIdx = useRef(Math.floor(Math.random() * GHOST_ASSETS.length)).current;
+  const sizeRef  = useRef(Math.random() * 30 + 50).current;
+  const yPosRef  = useRef(Math.random() * height).current;
+  const durRef   = useRef(Math.random() * 4000 + 6000).current;
+  const dirRef   = useRef(Math.random() > 0.5 ? 1 : -1).current;
+  const scaleRef = useRef(Math.random() * 0.4 + 0.8).current;
+
+  useEffect(() => {
+    const startX = dirRef === 1 ? -150 : width + 50;
+    const endX   = dirRef === 1 ? width + 50 : -150;
+    const loop = () => {
+      xAnim.setValue(startX);
+      Animated.timing(xAnim, { toValue: endX, duration: durRef, useNativeDriver: true }).start(loop);
+    };
+    const t = setTimeout(loop, delay);
+    return () => clearTimeout(t);
+  }, []);
+
+  return (
+    <Animated.Image
+      source={GHOST_ASSETS[ghostIdx]}
+      style={[
+        styles.bgGhost,
+        {
+          top: yPosRef,
+          width: sizeRef, height: sizeRef,
+          transform: [
+            { translateX: xAnim },
+            { scaleX: dirRef === -1 ? -scaleRef : scaleRef },
+            { scaleY: scaleRef },
+          ],
+        },
+      ]}
+    />
+  );
+}
 
 const WAVE = [0.3, 0.9, 0.4, 1.0, 0.3, 0.85, 0.5, 0.95, 0.4, 0.7];
 const BARS = [0.4, 0.7, 0.55, 0.9, 0.6, 0.8, 0.5];
@@ -43,7 +93,7 @@ function PreviewCard({ color, icon, label, value, rotate, top, left, chartType =
     >
       <View style={styles.cardHeader}>
         <View style={[styles.iconBox, { backgroundColor: accent + '20' }]}>
-          <Ionicons name={icon} size={20} color={accent} />
+          <HugeiconsIcon icon={icon} size={20} color={accent} />
         </View>
         <View style={[styles.chartArea, chartType === 'wave' && styles.chartAreaWave]}>
           {data.map((h, i) => (
@@ -79,21 +129,25 @@ export default function WelcomeScreen({ navigation }) {
     <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]}>
       <StatusBar barStyle="light-content" />
 
+      {[...Array(24)].map((_, i) => (
+        <BackgroundGhost key={i} delay={i * 600} />
+      ))}
+
       <View style={styles.container}>
         {/* Animated preview cards */}
         <View style={styles.cardsArea}>
           <PreviewCard
-            color={cardColors.cardPurple} icon="eye-outline" label="Stalkers" value="5 kişi" accent={cardColors.purple}
+            color={cardColors.cardPurple} icon={ViewIcon} label="Stalkers" value="5 kişi" accent={cardColors.purple}
             rotate="-10deg" top={8} left={width * 0.04} chartType="wave"
             floatY={float1}
           />
           <PreviewCard
-            color={cardColors.cardMauve} icon="notifications-off-outline" label="Muted" value="4 kişi" accent={cardColors.mauve}
+            color={cardColors.cardMauve} icon={NotificationBlock01Icon} label="Hayalet" value="4 kişi" accent={cardColors.mauve}
             rotate="5deg" top={52} left={width * 0.10}
             floatY={float2}
           />
           <PreviewCard
-            color={cardColors.cardTeal} icon="alert-circle-outline" label="Unfollowers" value="6 kişi" accent={cardColors.teal}
+            color={cardColors.cardTeal} icon={BadgeAlertIcon} label="Unfollowers" value="6 kişi" accent={cardColors.teal}
             rotate="-2deg" top={96} left={width * 0.16}
             floatY={float3}
           />
@@ -114,7 +168,7 @@ export default function WelcomeScreen({ navigation }) {
         <TouchableOpacity
           style={[styles.btnPrimary, { backgroundColor: colors.gold }, SHADOWS.glowGold, GLOSS]}
           activeOpacity={0.85}
-          onPress={() => navigation.navigate('Login')}
+          onPress={() => navigation.navigate('Onboarding')}
         >
           <Text style={styles.btnPrimaryText}>Başla →</Text>
         </TouchableOpacity>
@@ -125,7 +179,13 @@ export default function WelcomeScreen({ navigation }) {
 
 const styles = StyleSheet.create({
   safe:      { flex: 1 },
-  container: { flex: 1, paddingHorizontal: SPACING.lg, justifyContent: 'space-between', paddingBottom: SPACING.xl },
+  container: { flex: 1, paddingHorizontal: SPACING.lg, justifyContent: 'space-between', paddingBottom: SPACING.xl, zIndex: 1 },
+
+  bgGhost: {
+    position: 'absolute',
+    opacity: 0.15,
+    zIndex: 0,
+  },
 
   cardsArea:   { height: 320, marginTop: SPACING.lg, position: 'relative' },
   previewCard: { position: 'absolute', borderRadius: RADIUS.lg, padding: SPACING.md, paddingBottom: SPACING.lg },

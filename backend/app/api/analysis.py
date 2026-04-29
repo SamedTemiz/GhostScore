@@ -17,7 +17,7 @@ from app.core.security import (
     safe_user_id,
 )
 from app.db.supabase import get_supabase
-from app.models.schemas import AnalysisResponse, ProfileData, StalkerItem, MutedItem, UnfollowerItem
+from app.models.schemas import AnalysisResponse, ProfileData, StalkerItem, GhostFollowerItem, UnfollowerItem
 
 router = APIRouter(prefix="/analysis", tags=["analysis"])
 log = structlog.get_logger()
@@ -48,16 +48,16 @@ async def run_analysis(user_id: str = Depends(get_current_user_id)):
 
     # ── MOCK MOD ─────────────────────────────────────────────────
     if settings.INSTAGRAM_MOCK:
-        log.info("analysis_mock_mode", user_id=user_id)
+        log.info("analysis_mock_mode", user_hash=safe_user_id(user_id))
         data = MOCK_ANALYSIS_DATA
         profile = data["profile"]
         stalkers = data["stalkers"]
-        muted = data["muted"]
+        ghost_followers = data["ghost_followers"]
         unfollowers = data["unfollowers"]
         return AnalysisResponse(
             profile=ProfileData(**profile),
             stalkers=[StalkerItem(**s) for s in stalkers],
-            muted=[MutedItem(**m) for m in muted],
+            ghost_followers=[GhostFollowerItem(**g) for g in ghost_followers],
             unfollowers=[UnfollowerItem(**u) for u in unfollowers],
             analysis_id="mock-id",
             created_at=datetime.now(timezone.utc).isoformat(),
@@ -82,12 +82,18 @@ async def run_analysis(user_id: str = Depends(get_current_user_id)):
     if user.get("last_analysis_at"):
         last_dt = datetime.fromisoformat(user["last_analysis_at"].replace("Z", "+00:00"))
         now = datetime.now(timezone.utc)
-        hours_since = (now - last_dt).total_seconds() / 3600
-        if hours_since < 24:
-            remaining_hours = int(24 - hours_since)
+        seconds_since = (now - last_dt).total_seconds()
+        if seconds_since < 86400:
+            remaining_seconds = 86400 - seconds_since
+            remaining_hours   = int(remaining_seconds // 3600)
+            remaining_minutes = int((remaining_seconds % 3600) // 60)
+            if remaining_hours > 0:
+                time_str = f"{remaining_hours} saat"
+            else:
+                time_str = f"{max(remaining_minutes, 1)} dakika"
             raise HTTPException(
                 status_code=429,
-                detail=f"Günlük analiz limitine ulaştın. {remaining_hours} saat sonra tekrar dene.",
+                detail=f"Bugünkü analizini zaten yaptın. {time_str} sonra tekrar analiz edebilirsin.",
             )
 
     # Session çöz ve Instagram'a bağlan
@@ -120,9 +126,9 @@ async def run_analysis(user_id: str = Depends(get_current_user_id)):
         raise HTTPException(status_code=503, detail=str(e))
 
     profile = data["profile"]
-    stalkers = data["stalkers"]
-    muted = data["muted"]
-    unfollowers = data["unfollowers"]
+    stalkers        = data["stalkers"]
+    ghost_followers = data["ghost_followers"]
+    unfollowers     = data["unfollowers"]
 
     # Sonuçları şifreli olarak DB'ye kaydet
     now_iso = datetime.now(timezone.utc).isoformat()
@@ -135,11 +141,11 @@ async def run_analysis(user_id: str = Depends(get_current_user_id)):
             "following_count": profile["following"],
             "posts_count": profile["posts"],
             "visibility_score": profile["visibility_score"],
-            "stalkers_count": len(stalkers),
-            "muted_count": len(muted),
-            "unfollowers_count": len(unfollowers),
-            "stalkers_encrypted": _encrypt_list(stalkers),
-            "muted_encrypted": _encrypt_list(muted),
+            "stalkers_count":     len(stalkers),
+            "muted_count":        len(ghost_followers),
+            "unfollowers_count":  len(unfollowers),
+            "stalkers_encrypted":    _encrypt_list(stalkers),
+            "muted_encrypted":       _encrypt_list(ghost_followers),
             "unfollowers_encrypted": _encrypt_list(unfollowers),
         })
         .execute()
@@ -148,10 +154,12 @@ async def run_analysis(user_id: str = Depends(get_current_user_id)):
     analysis_id = analysis_row.data[0]["id"]
     created_at = analysis_row.data[0]["created_at"]
 
-    # Kullanıcı son analiz zamanını güncelle
+    # Kullanıcı son analiz zamanını ve profil bilgilerini güncelle
     db.table("users").update({
         "last_analysis_at": now_iso,
         "analysis_count": (user.get("analysis_count") or 0) + 1,
+        "ig_profile_pic": profile.get("profile_pic", ""),
+        "ig_username": profile.get("username", ""),
     }).eq("id", user_id).execute()
 
     # Audit log
@@ -165,7 +173,7 @@ async def run_analysis(user_id: str = Depends(get_current_user_id)):
     return AnalysisResponse(
         profile=ProfileData(**profile),
         stalkers=[StalkerItem(**s) for s in stalkers],
-        muted=[MutedItem(**m) for m in muted],
+        ghost_followers=[GhostFollowerItem(**g) for g in ghost_followers],
         unfollowers=[UnfollowerItem(**u) for u in unfollowers],
         analysis_id=analysis_id,
         created_at=created_at,
@@ -193,13 +201,18 @@ async def get_latest_analysis(user_id: str = Depends(get_current_user_id)):
 
     analysis = row.data[0]
 
-    stalkers = _decrypt_list(analysis.get("stalkers_encrypted"))
-    muted = _decrypt_list(analysis.get("muted_encrypted"))
-    unfollowers = _decrypt_list(analysis.get("unfollowers_encrypted"))
+    stalkers        = _decrypt_list(analysis.get("stalkers_encrypted"))
+    ghost_followers = _decrypt_list(analysis.get("muted_encrypted"))
+    unfollowers     = _decrypt_list(analysis.get("unfollowers_encrypted"))
+
+    user_row = db.table("users").select("ig_username, ig_profile_pic").eq("id", user_id).single().execute()
+    ig_username    = user_row.data.get("ig_username", "")    if user_row.data else ""
+    ig_profile_pic = user_row.data.get("ig_profile_pic", "") if user_row.data else ""
 
     return AnalysisResponse(
         profile=ProfileData(
-            username="",  # profil adı şifresiz saklanmıyor — privacy öncelikli
+            username=ig_username,
+            profile_pic=ig_profile_pic,
             followers=analysis["followers_count"] or 0,
             following=analysis["following_count"] or 0,
             posts=analysis["posts_count"] or 0,
@@ -207,7 +220,7 @@ async def get_latest_analysis(user_id: str = Depends(get_current_user_id)):
             visibility_score=analysis["visibility_score"] or 0,
         ),
         stalkers=[StalkerItem(**s) for s in stalkers],
-        muted=[MutedItem(**m) for m in muted],
+        ghost_followers=[GhostFollowerItem(**g) for g in ghost_followers],
         unfollowers=[UnfollowerItem(**u) for u in unfollowers],
         analysis_id=analysis["id"],
         created_at=analysis["created_at"],
