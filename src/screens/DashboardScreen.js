@@ -1,9 +1,63 @@
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
+import { useRef, useEffect, useState } from 'react';
+import { View, Text, Image, ScrollView, StyleSheet, TouchableOpacity, Animated, Dimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { HugeiconsIcon } from '@hugeicons/react-native';
+import { ViewIcon, BadgeAlertIcon, UserMinus01Icon, UserCircleIcon, Settings01Icon } from '@hugeicons/core-free-icons';
+
+const SUSPICIOUS = require('../../assets/main/Suspicious_Look.png');
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { SPACING, RADIUS, SHADOWS, GLOSS } from '../constants/theme';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
+
+const { width, height } = Dimensions.get('window');
+
+const GHOST_ASSETS = [
+  require('../../assets/main/Default_Pose.png'),
+  require('../../assets/main/Left_Profile.png'),
+  require('../../assets/main/Right_Profile.png'),
+  require('../../assets/main/Top_View.png'),
+  require('../../assets/main/Shy_Mode.png'),
+];
+
+function BackgroundGhost({ delay = 0 }) {
+  const xAnim    = useRef(new Animated.Value(-150)).current;
+  const ghostIdx = useRef(Math.floor(Math.random() * GHOST_ASSETS.length)).current;
+  const sizeRef  = useRef(Math.random() * 32 + 48).current;      // 48-80px
+  const yPosRef  = useRef(Math.random() * height).current;
+  const durRef   = useRef(Math.random() * 3000 + 7000).current;  // 7-10s
+  const dirRef   = useRef(Math.random() > 0.5 ? 1 : -1).current;
+  const scaleRef = useRef(Math.random() * 0.3 + 0.7).current;
+
+  useEffect(() => {
+    const startX = dirRef === 1 ? -150 : width + 50;
+    const endX   = dirRef === 1 ? width + 50 : -150;
+    const loop = () => {
+      xAnim.setValue(startX);
+      Animated.timing(xAnim, { toValue: endX, duration: durRef, useNativeDriver: true }).start(loop);
+    };
+    const t = setTimeout(loop, delay);
+    return () => clearTimeout(t);
+  }, []);
+
+  return (
+    <Animated.Image
+      source={GHOST_ASSETS[ghostIdx]}
+      style={[
+        styles.bgGhost,
+        {
+          top: yPosRef,
+          width: sizeRef, height: sizeRef,
+          transform: [
+            { translateX: xAnim },
+            { scaleX: dirRef === -1 ? -scaleRef : scaleRef },
+            { scaleY: scaleRef },
+          ],
+        },
+      ]}
+    />
+  );
+}
 
 // Score ring — always white text because it sits on the dark featured card
 function ScoreRing({ score = 72, size = 120 }) {
@@ -30,7 +84,7 @@ function AnalyticsCard({ icon, title, count, subtitle, cardBg, accent, border, o
       style={[styles.analyticsCard, { backgroundColor: cardBg }, SHADOWS.glass]}>
       <View style={styles.analyticsCardTop}>
         <View style={[styles.analyticsIcon, { backgroundColor: accent + '25' }]}>
-          <Ionicons name={icon} size={20} color={accent} />
+          <HugeiconsIcon icon={icon} size={20} color={accent} />
         </View>
         <Text style={[styles.analyticsCount, { color: accent }]}>{count}</Text>
       </View>
@@ -54,29 +108,39 @@ const LEGEND = [
 
 export default function DashboardScreen({ navigation }) {
   const { colors, isDark } = useTheme();
-  const { data, logout } = useAuth();
+  const { user, data, logout } = useAuth();
   const profile   = data?.profile;
   const score     = profile?.ghostScore ?? 0;
+  const picUri    = user?.profilePic || profile?.profilePic || '';
+  const [picError, setPicError] = useState(false);
   // Featured card stays dark as in the middle screen of the reference
   const featuredBg = colors.cardDark || '#5C4B5E';
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]}>
+      {/* Arka plan ghost efektleri — yavaş ve az */}
+      {[...Array(20)].map((_, i) => (
+        <BackgroundGhost key={i} delay={i * 600} />
+      ))}
+
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
 
         {/* Top bar */}
         <View style={styles.topBar}>
           <View style={styles.topLeft}>
             <View style={[styles.avatarCircle, { backgroundColor: colors.surface, borderColor: colors.border }, SHADOWS.soft]}>
-              <Ionicons name="person-outline" size={24} color={colors.textPrimary} />
+              {picUri && !picError
+                ? <Image source={{ uri: picUri }} style={styles.avatarImg} onError={() => setPicError(true)} />
+                : <HugeiconsIcon icon={UserCircleIcon} size={24} color={colors.textPrimary} />
+              }
             </View>
             <View>
               <Text style={[styles.topGreeting, { color: colors.textMuted }]}>Merhaba,</Text>
-              <Text style={[styles.topUsername, { color: colors.textPrimary }]}>@{profile?.username}</Text>
+              <Text style={[styles.topUsername, { color: colors.textPrimary }]}>@{user?.username || profile?.username || '...'}</Text>
             </View>
           </View>
           <TouchableOpacity onPress={() => navigation.navigate('Settings')} style={[styles.logoutBtn, { borderColor: colors.border, flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: colors.surface }, SHADOWS.soft]}>
-            <Ionicons name="settings-outline" size={16} color={colors.textSecondary} />
+            <HugeiconsIcon icon={Settings01Icon} size={16} color={colors.textSecondary} />
             <Text style={[styles.logoutText, { color: colors.textSecondary }]}>Ayarlar</Text>
           </TouchableOpacity>
         </View>
@@ -94,11 +158,16 @@ export default function DashboardScreen({ navigation }) {
             <Text style={styles.scoreCardTitle}>Ghost Score</Text>
             <View style={[
               styles.scorePill,
-              { backgroundColor: score >= 70 ? '#4DBDBD22' : '#C9A84C22' },
+              { backgroundColor: score >= 70 ? '#4DBDBD22' : '#C9A84C22',
+                flexDirection: 'row', alignItems: 'center', gap: 4 },
             ]}>
-              <Text style={{ fontSize: 11, fontWeight: '700', color: score >= 70 ? '#4DBDBD' : '#C9A84C' }}>
-                {score >= 70 ? '🔥 Yüksek' : '👻 Düşük'}
-              </Text>
+              {score >= 70
+                ? <Text style={{ fontSize: 11, fontWeight: '700', color: '#4DBDBD' }}>🔥 Yüksek</Text>
+                : <>
+                    <Image source={SUSPICIOUS} style={{ width: 16, height: 16 }} resizeMode="contain" />
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: '#C9A84C' }}>Düşük</Text>
+                  </>
+              }
             </View>
           </View>
 
@@ -119,9 +188,9 @@ export default function DashboardScreen({ navigation }) {
           </View>
 
           {/* Footer rule */}
-          <View style={styles.scoreCardFooter}>
+          <TouchableOpacity style={styles.scoreCardFooter} onPress={() => navigation.navigate('Results')} activeOpacity={0.7}>
             <Text style={styles.scoreCardFooterText}>İstatistikleri Gör →</Text>
-          </View>
+          </TouchableOpacity>
         </View>
 
         {/* Section label */}
@@ -130,14 +199,14 @@ export default function DashboardScreen({ navigation }) {
         {/* 2-column analytics */}
         <View style={styles.grid}>
           <AnalyticsCard
-            icon="eye-outline" title="Stalkers" count={data?.stalkers?.length ?? 0}
+            icon={ViewIcon} title="Stalkers" count={data?.stalkers?.length ?? 0}
             subtitle="Takip etmeden izliyor"
             cardBg={colors.cardPurple} accent={colors.purple} border={colors.border}
             onPress={() => navigation.navigate('Stalkers')}
           />
           <AnalyticsCard
-            icon="notifications-off-outline" title="Muted" count={data?.muted?.length ?? 0}
-            subtitle="Sıralama düştü"
+            icon={UserMinus01Icon} title="Hayalet Takipçi" count={data?.ghostFollowers?.length ?? 0}
+            subtitle="Hiç etkileşim kurmadı"
             cardBg={colors.cardMauve} accent={colors.mauve} border={colors.border}
             onPress={() => navigation.navigate('Muted')}
           />
@@ -148,7 +217,7 @@ export default function DashboardScreen({ navigation }) {
           style={[styles.unfollowerCard, { backgroundColor: colors.cardTeal }, SHADOWS.glass]}>
           <View style={styles.unfollowerLeft}>
             <View style={[styles.analyticsIcon, { backgroundColor: colors.teal + '25' }]}>
-              <Ionicons name="alert-circle-outline" size={22} color={colors.teal} />
+              <HugeiconsIcon icon={BadgeAlertIcon} size={22} color={colors.teal} />
             </View>
             <View style={{ marginLeft: SPACING.md }}>
               <Text style={[styles.analyticsTitle, { color: colors.teal }]}>Unfollower Alarmı</Text>
@@ -160,7 +229,11 @@ export default function DashboardScreen({ navigation }) {
           </Text>
         </TouchableOpacity>
 
-        <Text style={[styles.footer, { color: colors.textMuted }]}>Son güncelleme: Az önce</Text>
+        <Text style={[styles.footer, { color: colors.textMuted }]}>
+          {data?.createdAt
+            ? `Son güncelleme: ${new Date(data.createdAt).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}`
+            : 'Henüz analiz yapılmadı'}
+        </Text>
       </ScrollView>
     </SafeAreaView>
   );
@@ -170,10 +243,17 @@ const styles = StyleSheet.create({
   safe:   { flex: 1 },
   scroll: { padding: SPACING.lg, paddingBottom: SPACING.xxl },
 
+  bgGhost: {
+    position: 'absolute',
+    opacity: 0.22,
+    zIndex: 0,
+  },
+
   // Top bar
   topBar:       { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.lg },
   topLeft:      { flexDirection: 'row', alignItems: 'center' },
-  avatarCircle: { width: 42, height: 42, borderRadius: 21, ...GLOSS, alignItems: 'center', justifyContent: 'center', marginRight: SPACING.sm },
+  avatarCircle: { width: 42, height: 42, borderRadius: 21, ...GLOSS, alignItems: 'center', justifyContent: 'center', marginRight: SPACING.sm, overflow: 'hidden' },
+  avatarImg:    { width: 42, height: 42, borderRadius: 21 },
   topGreeting:  { fontSize: 12 },
   topUsername:  { fontSize: 15, fontWeight: '700' },
   logoutBtn:    { paddingHorizontal: SPACING.md, paddingVertical: SPACING.xs, borderRadius: RADIUS.full, ...GLOSS },

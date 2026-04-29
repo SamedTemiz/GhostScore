@@ -1,6 +1,5 @@
-from pydantic import BaseModel, Field, ConfigDict, field_validator
+from pydantic import BaseModel, Field, ConfigDict
 from pydantic.alias_generators import to_camel
-import re
 
 _camel = ConfigDict(alias_generator=to_camel, populate_by_name=True)
 
@@ -11,20 +10,30 @@ class InstagramLoginRequest(BaseModel):
     username: str = Field(..., min_length=1, max_length=30)
     password: str = Field(..., min_length=1, max_length=128)
 
-    @field_validator("username")
-    @classmethod
-    def clean_username(cls, v: str) -> str:
-        v = v.strip().lstrip("@").lower()
-        if not re.match(r"^[a-z0-9._]+$", v):
-            raise ValueError("Geçersiz kullanıcı adı formatı")
-        return v
 
-    @field_validator("password")
-    @classmethod
-    def validate_password(cls, v: str) -> str:
-        if len(v.strip()) == 0:
-            raise ValueError("Şifre boş olamaz")
-        return v
+class WebViewUserProfile(BaseModel):
+    username: str
+    full_name: str = ""
+    followers: int = 0
+    following: int = 0
+    posts: int = 0
+    profile_pic: str = ""
+
+
+class WebViewUserItem(BaseModel):
+    id: str
+    username: str
+    profile_pic: str = ""
+
+
+class WebViewLoginRequest(BaseModel):
+    profile: WebViewUserProfile
+    followers: list[WebViewUserItem] = []
+    following: list[WebViewUserItem] = []
+
+
+class SessionLoginRequest(BaseModel):
+    session_id: str
 
 
 class TwoFactorRequest(BaseModel):
@@ -49,6 +58,7 @@ class TokenResponse(BaseModel):
 class ProfileData(BaseModel):
     model_config = _camel
     username: str
+    profile_pic: str = ""
     followers: int
     following: int
     posts: int
@@ -65,13 +75,12 @@ class StalkerItem(BaseModel):
     is_following: bool
 
 
-class MutedItem(BaseModel):
+class GhostFollowerItem(BaseModel):
     model_config = _camel
     id: str
     username: str
     profile_pic: str
-    rank_delta: int
-    last_seen: str
+    posts_liked: int  # analiz edilen postlardan kaç tanesini beğendi
 
 
 class UnfollowerItem(BaseModel):
@@ -87,10 +96,17 @@ class AnalysisResponse(BaseModel):
     model_config = _camel
     profile: ProfileData
     stalkers: list[StalkerItem]
-    muted: list[MutedItem]
+    ghost_followers: list[GhostFollowerItem]
     unfollowers: list[UnfollowerItem]
     analysis_id: str
     created_at: str
+
+
+class WebViewLoginResponse(BaseModel):
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"
+    analysis: AnalysisResponse
 
 
 class ErrorResponse(BaseModel):

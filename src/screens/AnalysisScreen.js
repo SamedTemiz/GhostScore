@@ -90,7 +90,7 @@ function BackgroundGhost({ delay = 0 }) {
 
 export default function AnalysisScreen({ navigation }) {
   const { colors } = useTheme();
-  const { data, analysisError } = useAuth();
+  const { user, data, analysisError } = useAuth();
   const [msgIndex, setMsgIndex] = useState(0);
   const [minDone, setMinDone]   = useState(false);
   const [timedOut, setTimedOut] = useState(false);
@@ -147,7 +147,7 @@ export default function AnalysisScreen({ navigation }) {
     if ((data || isSimulation) && minDone) {
       clearTimeout(timeoutRef.current);
       const t = setTimeout(() => {
-        navigation.replace('Results');
+        navigation.reset({ index: 0, routes: [{ name: 'Results' }] });
       }, 500);
       return () => clearTimeout(t);
     }
@@ -207,7 +207,7 @@ export default function AnalysisScreen({ navigation }) {
         </View>
 
         <Text style={[styles.footer, { color: colors.textMuted }]}>
-          @{data?.profile?.username ?? 'hesap'} analiz ediliyor
+          @{user?.username || data?.profile?.username || 'hesap'} analiz ediliyor
         </Text>
       </View>
     </SafeAreaView>

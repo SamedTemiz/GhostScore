@@ -68,7 +68,16 @@ async function request(path, options = {}, retry = true) {
     ...options.headers,
   };
 
-  const res = await fetch(`${BASE_URL}${path}`, { ...options, headers });
+  let res;
+  try {
+    res = await fetch(`${BASE_URL}${path}`, { ...options, headers });
+  } catch (networkErr) {
+    const err = new Error(
+      'Bağlantı hatası. Lütfen internet bağlantını kontrol edip tekrar dene.'
+    );
+    err.status = 0;
+    throw err;
+  }
 
   // 401 → token yenile ve tekrar dene
   if (res.status === 401 && retry) {
@@ -135,6 +144,24 @@ export const authApi = {
     const data = await request('/auth/verify-2fa', {
       method: 'POST',
       body: JSON.stringify({ username, code, identifier }),
+    });
+    await tokenStore.save(data.access_token, data.refresh_token);
+    return data;
+  },
+
+  async sessionLogin(sessionId) {
+    const data = await request('/auth/session-login', {
+      method: 'POST',
+      body: JSON.stringify({ session_id: sessionId }),
+    });
+    await tokenStore.save(data.access_token, data.refresh_token);
+    return data;
+  },
+
+  async webviewLogin(payload) {
+    const data = await request('/auth/webview-login', {
+      method: 'POST',
+      body: JSON.stringify(payload),
     });
     await tokenStore.save(data.access_token, data.refresh_token);
     return data;

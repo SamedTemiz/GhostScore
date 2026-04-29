@@ -1,368 +1,291 @@
-import { useState, useRef } from 'react';
-import { Ionicons } from '@expo/vector-icons';
+import { HugeiconsIcon } from '@hugeicons/react-native';
+import { InstagramIcon, GearsIcon, ShieldKeyIcon, ViewIcon, ViewOffSlashIcon } from '@hugeicons/core-free-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
-  View, Text, TextInput, TouchableOpacity,
-  StyleSheet, KeyboardAvoidingView, Platform,
-  Modal, Animated, StatusBar,
+  View, Text, TouchableOpacity, TextInput,
+  StyleSheet, StatusBar, Modal, ScrollView,
+  ActivityIndicator, KeyboardAvoidingView, Platform,
 } from 'react-native';
-import { SPACING, RADIUS, DARK_COLORS, SHADOWS, GLOSS } from '../constants/theme';
-import { useAuth } from '../context/AuthContext';
+import { useState, useRef, useEffect } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { SPACING, RADIUS, SHADOWS, GLOSS } from '../constants/theme';
 import { useTheme } from '../context/ThemeContext';
+import { useAuth } from '../context/AuthContext';
 
-const IG_COLOR = '#C13584';
-
-// ── Şifre bottom sheet ────────────────────────────────────────
-
-function PasswordSheet({ visible, username, onClose, onSubmit, submitting, error, colors }) {
-  const [password, setPassword]     = useState('');
-  const [showPass, setShowPass]     = useState(false);
-  const [accepted, setAccepted]     = useState(false);
-
-  const handleSubmit = () => {
-    if (!password) return;
-    onSubmit(password);
-  };
-
-  if (!visible) return null;
-
-  return (
-    <Modal visible={visible} transparent animationType="slide">
-      <TouchableOpacity style={styles.sheetOverlay} activeOpacity={1} onPress={onClose} />
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={styles.sheetWrapper}
-      >
-        <View style={[styles.sheet, { backgroundColor: colors.surface }, SHADOWS.glass]}>
-          <View style={[styles.sheetHandle, { backgroundColor: colors.border }]} />
-
-          {/* Başlık */}
-          <View style={styles.sheetHeader}>
-            <View style={[styles.igIconSmall, SHADOWS.soft]}>
-              <Ionicons name="logo-instagram" size={20} color="#fff" />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.sheetTitle, { color: colors.textPrimary }]}>@{username}</Text>
-              <Text style={[styles.sheetSub, { color: colors.textMuted }]}>Tam analiz için şifreni gir</Text>
-            </View>
-            <TouchableOpacity onPress={onClose}>
-              <Ionicons name="close" size={22} color={colors.textMuted} />
-            </TouchableOpacity>
-          </View>
-
-          {/* Güven notu */}
-          <View style={[styles.trustNote, { backgroundColor: colors.teal + '15' }]}>
-            <Ionicons name="shield-checkmark" size={14} color={colors.teal} />
-            <Text style={[styles.trustNoteText, { color: colors.teal }]}>
-              Şifren yalnızca oturum açmak için kullanılır — veritabanına asla yazılmaz, şifreli oturum anahtarına dönüştürülür.
-            </Text>
-          </View>
-
-          {/* Şifre input */}
-          <View style={[styles.inputWrap, { backgroundColor: colors.background, borderColor: colors.border }, SHADOWS.soft]}>
-            <Ionicons name="lock-closed-outline" size={18} color={colors.textMuted} style={styles.inputIcon} />
-            <TextInput
-              style={[styles.input, { flex: 1, color: colors.textPrimary }]}
-              placeholder="Instagram şifresi"
-              placeholderTextColor={colors.textMuted}
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry={!showPass}
-              autoCapitalize="none"
-              autoCorrect={false}
-              autoFocus
-              returnKeyType="go"
-              onSubmitEditing={handleSubmit}
-            />
-            <TouchableOpacity onPress={() => setShowPass(v => !v)} style={styles.eyeBtn}>
-              <Ionicons
-                name={showPass ? 'eye-off-outline' : 'eye-outline'}
-                size={18}
-                color={colors.textMuted}
-              />
-            </TouchableOpacity>
-          </View>
-
-          {/* Hata */}
-          {error ? (
-            <View style={styles.errorBox}>
-              <Ionicons name="alert-circle-outline" size={14} color="#FF6B6B" />
-              <Text style={styles.errorText}>{error}</Text>
-            </View>
-          ) : null}
-
-          {/* Sorumluluk reddi onayı */}
-          <TouchableOpacity
-            style={styles.disclaimerRow}
-            onPress={() => setAccepted(v => !v)}
-            activeOpacity={0.7}
-          >
-            <View style={[styles.checkbox, { borderColor: colors.textMuted }, accepted && { backgroundColor: colors.gold, borderColor: colors.gold }]}>
-              {accepted && <Ionicons name="checkmark" size={13} color="#1A1628" />}
-            </View>
-            <Text style={[styles.disclaimerText, { color: colors.textMuted }]}>
-              Bu uygulamanın kullanımı sonucunda Instagram hesabımda oluşabilecek kısıtlama, askıya alma veya ban gibi durumlardan GhostScore'un herhangi bir sorumluluğu olmadığını anlıyor ve kabul ediyorum.
-            </Text>
-          </TouchableOpacity>
-
-          {/* Bağlan butonu */}
-          <TouchableOpacity
-            style={[styles.btn, (!password || !accepted || submitting) && styles.btnDisabled, { backgroundColor: colors.gold }, SHADOWS.glass]}
-            onPress={handleSubmit}
-            disabled={!password || !accepted || submitting}
-            activeOpacity={0.85}
-          >
-            <Text style={styles.btnText}>
-              {submitting ? 'Bağlanıyor...' : 'Tam Analizi Başlat →'}
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </KeyboardAvoidingView>
-    </Modal>
-  );
-}
-
-// ── 2FA bottom sheet ──────────────────────────────────────────
-
-function TwoFaSheet({ visible, username, onClose, onSubmit, submitting, error, colors }) {
-  const [code, setCode] = useState('');
-
-  if (!visible) return null;
-
-  return (
-    <Modal visible={visible} transparent animationType="slide">
-      <TouchableOpacity style={styles.sheetOverlay} activeOpacity={1} onPress={onClose} />
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={styles.sheetWrapper}
-      >
-        <View style={[styles.sheet, { backgroundColor: colors.surface }, SHADOWS.glass]}>
-          <View style={[styles.sheetHandle, { backgroundColor: colors.border }]} />
-
-          <View style={styles.sheetHeader}>
-            <View style={[styles.igIconSmall, SHADOWS.soft]}>
-              <Ionicons name="shield-checkmark" size={20} color="#fff" />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.sheetTitle, { color: colors.textPrimary }]}>İki Faktörlü Doğrulama</Text>
-              <Text style={[styles.sheetSub, { color: colors.textMuted }]}>@{username} için kod gönderildi</Text>
-            </View>
-            <TouchableOpacity onPress={onClose}>
-              <Ionicons name="close" size={22} color={colors.textMuted} />
-            </TouchableOpacity>
-          </View>
-
-          <View style={[styles.trustNote, { backgroundColor: colors.purple + '15' }]}>
-            <Ionicons name="phone-portrait-outline" size={14} color={colors.purple} />
-            <Text style={[styles.trustNoteText, { color: colors.purple }]}>
-              Instagram'ın SMS veya authenticator uygulaması aracılığıyla gönderdiği 6 haneli kodu gir.
-            </Text>
-          </View>
-
-          <View style={[styles.inputWrap, { backgroundColor: colors.background, borderColor: colors.border }, SHADOWS.soft]}>
-            <Ionicons name="keypad-outline" size={18} color={colors.textMuted} style={styles.inputIcon} />
-            <TextInput
-              style={[styles.input, { flex: 1, color: colors.textPrimary, fontSize: 22, letterSpacing: 6 }]}
-              placeholder="000000"
-              placeholderTextColor={colors.textMuted}
-              value={code}
-              onChangeText={(t) => setCode(t.replace(/\D/g, '').slice(0, 8))}
-              keyboardType="number-pad"
-              maxLength={8}
-              autoFocus
-              returnKeyType="go"
-              onSubmitEditing={() => code.length >= 6 && onSubmit(code)}
-            />
-          </View>
-
-          {error ? (
-            <View style={styles.errorBox}>
-              <Ionicons name="alert-circle-outline" size={14} color="#FF6B6B" />
-              <Text style={styles.errorText}>{error}</Text>
-            </View>
-          ) : null}
-
-          <TouchableOpacity
-            style={[styles.btn, (code.length < 6 || submitting) && styles.btnDisabled, { backgroundColor: colors.purple }, SHADOWS.glass]}
-            onPress={() => onSubmit(code)}
-            disabled={code.length < 6 || submitting}
-            activeOpacity={0.85}
-          >
-            <Text style={[styles.btnText, { color: '#FFF' }]}>
-              {submitting ? 'Doğrulanıyor...' : 'Doğrula →'}
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </KeyboardAvoidingView>
-    </Modal>
-  );
-}
-
-// ── Ana ekran ─────────────────────────────────────────────────
+const IG_COLOR     = '#C13584';
+const DEV_MODE_KEY = 'gs_dev_mode';
 
 export default function LoginScreen({ navigation }) {
-  const { colors } = useTheme();
-  const { login, verify2fa, error } = useAuth();
-  const [username, setUsername]         = useState('');
-  const [sheetVisible, setSheet]        = useState(false);
-  const [submitting, setSubmitting]     = useState(false);
-  const [twoFaVisible, setTwoFaVisible] = useState(false);
-  const [twoFaIdentifier, setTwoFaId]   = useState('');
-  const [twoFaError, setTwoFaError]     = useState(null);
+  const { colors }                          = useTheme();
+  const { login, verify2fa, loginWithMock, loading, error } = useAuth();
 
-  const handleContinue = () => {
-    if (!username.trim()) return;
-    setSheet(true);
-  };
+  const [username, setUsername]       = useState('');
+  const [password, setPassword]       = useState('');
+  const [showPass, setShowPass]       = useState(false);
+  const [devMode, setDevMode]         = useState(false);
+  const [privacyVisible, setPrivacyVisible] = useState(false);
 
-  const handleLogin = async (password) => {
-    setSubmitting(true);
-    try {
-      await login(username.trim(), password);
-      setSheet(false);
-      navigation.replace('Analysis');
-    } catch (err) {
-      if (err.status === 202) {
-        setSheet(false);
-        setTwoFaId(err.twoFaIdentifier || '');
-        setTwoFaVisible(true);
-      }
-      // diğer hatalar AuthContext error state'ine yazıldı
-    } finally {
-      setSubmitting(false);
+  // 2FA state
+  const [twoFaVisible, setTwoFaVisible]       = useState(false);
+  const [twoFaCode, setTwoFaCode]             = useState('');
+  const [twoFaIdentifier, setTwoFaIdentifier] = useState('');
+  const [twoFaError, setTwoFaError]           = useState('');
+  const [twoFaLoading, setTwoFaLoading]       = useState(false);
+
+  const tapCount = useRef(0);
+  const tapTimer = useRef(null);
+
+  useEffect(() => {
+    AsyncStorage.getItem(DEV_MODE_KEY).then(v => { if (v === '1') setDevMode(true); });
+  }, []);
+
+  const handleFooterTap = () => {
+    tapCount.current += 1;
+    if (tapTimer.current) clearTimeout(tapTimer.current);
+    if (tapCount.current >= 5) {
+      tapCount.current = 0;
+      const next = !devMode;
+      setDevMode(next);
+      AsyncStorage.setItem(DEV_MODE_KEY, next ? '1' : '0').catch(() => {});
+    } else {
+      tapTimer.current = setTimeout(() => { tapCount.current = 0; }, 2000);
     }
   };
 
-  const handleTwoFa = async (code) => {
-    setSubmitting(true);
-    setTwoFaError(null);
+  const handleMockLogin = () => {
+    loginWithMock();
+    navigation.reset({ index: 0, routes: [{ name: 'Main' }] });
+  };
+
+  const handleLogin = async () => {
+    if (!username.trim() || !password.trim()) return;
     try {
-      await verify2fa(username.trim(), code, twoFaIdentifier);
-      setTwoFaVisible(false);
-      navigation.replace('Analysis');
+      await login(username.trim(), password);
+      navigation.reset({ index: 0, routes: [{ name: 'Analysis' }] });
     } catch (err) {
-      setTwoFaError(err.message || 'Kod hatalı. Tekrar dene.');
+      if (err.status === 202) {
+        setTwoFaIdentifier(err.twoFaIdentifier || '');
+        setTwoFaVisible(true);
+      }
+    }
+  };
+
+  const handleVerify2fa = async () => {
+    if (!twoFaCode.trim()) return;
+    setTwoFaLoading(true);
+    setTwoFaError('');
+    try {
+      await verify2fa(username.trim(), twoFaCode.trim(), twoFaIdentifier);
+      setTwoFaVisible(false);
+      navigation.reset({ index: 0, routes: [{ name: 'Analysis' }] });
+    } catch (err) {
+      setTwoFaError(err.message || 'Kod hatalı, tekrar dene.');
     } finally {
-      setSubmitting(false);
+      setTwoFaLoading(false);
     }
   };
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]}>
       <StatusBar barStyle="dark-content" />
-      <PasswordSheet
-        visible={sheetVisible}
-        username={username.trim()}
-        onClose={() => setSheet(false)}
-        onSubmit={handleLogin}
-        submitting={submitting}
-        error={error}
-        colors={colors}
-      />
-      <TwoFaSheet
-        visible={twoFaVisible}
-        username={username.trim()}
-        onClose={() => setTwoFaVisible(false)}
-        onSubmit={handleTwoFa}
-        submitting={submitting}
-        error={twoFaError}
-        colors={colors}
-      />
 
-      <View style={styles.main}>
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          style={[styles.container, { backgroundColor: colors.background }]}
-        >
-          <View style={styles.content}>
-            {/* Başlık */}
-            <View style={styles.igHeader}>
-              <View style={[styles.igIconWrap, SHADOWS.glowPurple]}>
-                <Ionicons name="logo-instagram" size={36} color="#fff" />
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <View style={styles.main}>
+          <View style={[styles.container, { backgroundColor: colors.background }]}>
+            <View style={styles.content}>
+
+              {/* Başlık */}
+              <View style={styles.header}>
+                <View style={[styles.igIconWrap, SHADOWS.glowPurple]}>
+                  <HugeiconsIcon icon={InstagramIcon} size={36} color="#fff" />
+                </View>
+                <Text style={[styles.titleBold, { color: colors.textPrimary }]}>Hesabına Giriş Yap</Text>
+                <Text style={[styles.subtitle, { color: colors.textMuted }]}>
+                  Instagram kullanıcı adı ve şifrenle giriş yap.
+                </Text>
               </View>
-              <Text style={[styles.titleBold, { color: colors.textPrimary }]}>Instagram Hesabını Bağla</Text>
-              <Text style={[styles.subtitle, { color: colors.textMuted }]}>
-                Kullanıcı adını gir, hayaletlerini keşfet.
-              </Text>
-            </View>
 
-            {/* Kullanıcı adı */}
-            <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Kullanıcı Adı</Text>
-            <View style={[styles.inputWrap, { backgroundColor: colors.surface, borderColor: colors.border }, SHADOWS.soft]}>
-              <Text style={[styles.atSign, { color: colors.textMuted }]}>@</Text>
-              <TextInput
-                style={[styles.input, { color: colors.textPrimary }]}
-                placeholder="kullaniciadi"
-                placeholderTextColor={colors.textMuted}
-                value={username}
-                onChangeText={setUsername}
-                autoCapitalize="none"
-                autoCorrect={false}
-                returnKeyType="go"
-                onSubmitEditing={handleContinue}
-              />
-            </View>
+              {/* Form */}
+              <View style={styles.form}>
+                <TextInput
+                  style={[styles.input, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.textPrimary }]}
+                  placeholder="Kullanıcı adı"
+                  placeholderTextColor={colors.textMuted}
+                  value={username}
+                  onChangeText={setUsername}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  returnKeyType="next"
+                  autoComplete="username"
+                  textContentType="username"
+                />
 
-            {/* Devam butonu */}
-            <TouchableOpacity
-              style={[
-                styles.btn, 
-                !username.trim() && styles.btnDisabled, 
-                { backgroundColor: colors.gold }, 
-                SHADOWS.glowGold,
-                GLOSS
-              ]}
-              onPress={handleContinue}
-              disabled={!username.trim()}
-              activeOpacity={0.85}
-            >
-              <View style={styles.btnInner}>
-                <Ionicons name="logo-instagram" size={18} color="#1A1200" />
-                <Text style={[styles.btnText, { color: '#1A1200' }]}>Tam Analiz Yap</Text>
-              </View>
-            </TouchableOpacity>
+                <View style={[styles.passWrap, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                  <TextInput
+                    style={[styles.passInput, { color: colors.textPrimary }]}
+                    placeholder="Şifre"
+                    placeholderTextColor={colors.textMuted}
+                    value={password}
+                    onChangeText={setPassword}
+                    secureTextEntry={!showPass}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    returnKeyType="done"
+                    onSubmitEditing={handleLogin}
+                    autoComplete="current-password"
+                    textContentType="password"
+                  />
+                  <TouchableOpacity onPress={() => setShowPass(v => !v)} style={styles.eyeBtn}>
+                    <HugeiconsIcon icon={showPass ? ViewOffSlashIcon : ViewIcon} size={20} color={colors.textMuted} />
+                  </TouchableOpacity>
+                </View>
 
-            {/* ─── TEST NAV (Hızlı Erişim) ─── */}
-            <View style={styles.testNavWrap}>
-              <Text style={[styles.testNavLabel, { color: colors.textMuted }]}>TEST NAVİGASYON (DEV)</Text>
-              <View style={styles.testRow}>
-                <TouchableOpacity 
-                  style={[styles.testBtn, { backgroundColor: colors.purple + '20' }, SHADOWS.soft]} 
-                  onPress={() => navigation.navigate('Main')}
+                {/* Hata */}
+                {error ? (
+                  <View style={[styles.errorBox, { backgroundColor: colors.danger + '15', borderColor: colors.danger + '40' }]}>
+                    <Text style={[styles.errorText, { color: colors.danger }]}>{error}</Text>
+                  </View>
+                ) : null}
+
+                {/* Giriş butonu */}
+                <TouchableOpacity
+                  style={[styles.btn, { backgroundColor: colors.purple, opacity: (!username.trim() || !password.trim()) ? 0.5 : 1 }, SHADOWS.glowPurple]}
+                  onPress={handleLogin}
+                  disabled={loading || !username.trim() || !password.trim()}
+                  activeOpacity={0.85}
                 >
-                  <Text style={[styles.testBtnText, { color: colors.purple }]}>Dashboard</Text>
-                </TouchableOpacity>
-                <TouchableOpacity 
-                  style={[styles.testBtn, { backgroundColor: colors.mauve + '20' }, SHADOWS.soft]} 
-                  onPress={() => navigation.navigate('Analysis', { simulation: true })}
-                >
-                  <Text style={[styles.testBtnText, { color: colors.mauve }]}>Analiz (Sim)</Text>
-                </TouchableOpacity>
-                <TouchableOpacity 
-                  style={[styles.testBtn, { backgroundColor: colors.teal + '20' }, SHADOWS.soft]} 
-                  onPress={() => navigation.navigate('Results')}
-                >
-                  <Text style={[styles.testBtnText, { color: colors.teal }]}>Sonuçlar</Text>
+                  {loading
+                    ? <ActivityIndicator color="#fff" />
+                    : <Text style={styles.btnText}>Giriş Yap</Text>
+                  }
                 </TouchableOpacity>
               </View>
-            </View>
 
-            {/* Alt not */}
-            <View style={styles.bottomNote}>
-              <Ionicons name="lock-closed-outline" size={12} color={colors.textMuted} />
-              <Text style={[styles.bottomNoteText, { color: colors.textMuted }]}>
-                Devam ederek şifreni güvenli şekilde girmeni isteyeceğiz.
-              </Text>
+              {/* Dev panel */}
+              {devMode && (
+                <View style={[styles.devPanel, { borderColor: colors.purple + '40', backgroundColor: colors.purple + '10' }]}>
+                  <View style={styles.devHeader}>
+                    <View style={[styles.devBadge, { backgroundColor: colors.purple }]}>
+                      <Text style={styles.devBadgeText}>DEV</Text>
+                    </View>
+                    <Text style={[styles.devTitle, { color: colors.textMuted }]}>Developer Mode</Text>
+                  </View>
+                  <TouchableOpacity
+                    style={[styles.devBtn, { backgroundColor: colors.purple + '20' }]}
+                    onPress={handleMockLogin}
+                  >
+                    <HugeiconsIcon icon={GearsIcon} size={15} color={colors.purple} />
+                    <Text style={[styles.devBtnText, { color: colors.purple }]}>Mock Data ile Giriş</Text>
+                  </TouchableOpacity>
+                  <View style={styles.testRow}>
+                    {[
+                      { label: 'Dashboard', screen: 'Main',     color: colors.purple },
+                      { label: 'Analiz',    screen: 'Analysis', color: colors.mauve, params: { simulation: true } },
+                      { label: 'Sonuçlar', screen: 'Results',  color: colors.teal },
+                    ].map(({ label, screen, color, params }) => (
+                      <TouchableOpacity
+                        key={screen}
+                        style={[styles.testBtn, { backgroundColor: color + '20' }]}
+                        onPress={() => navigation.navigate(screen, params)}
+                      >
+                        <Text style={[styles.testBtnText, { color }]}>{label}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+              )}
+
+              {/* Şeffaflık butonu */}
+              <TouchableOpacity
+                onPress={() => setPrivacyVisible(true)}
+                style={[styles.privacyBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
+              >
+                <HugeiconsIcon icon={ShieldKeyIcon} size={14} color={colors.teal} />
+                <Text style={[styles.privacyBtnText, { color: colors.teal }]}>Verilerinle ne yapıyoruz?</Text>
+              </TouchableOpacity>
+
             </View>
           </View>
-        </KeyboardAvoidingView>
 
-        <View style={styles.footer}>
-          <Text style={[styles.legal, { color: colors.textMuted }]}>
-            Bu uygulama Instagram LLC ile resmi olarak ilişkili değildir.
-          </Text>
+          <TouchableOpacity style={styles.footer} onPress={handleFooterTap} activeOpacity={1}>
+            <Text style={[styles.legal, { color: colors.textMuted }]}>
+              Bu uygulama Instagram LLC ile resmi olarak ilişkili değildir.{devMode ? '  ⚙️' : ''}
+            </Text>
+          </TouchableOpacity>
         </View>
-      </View>
+      </KeyboardAvoidingView>
+
+      {/* 2FA Modal */}
+      <Modal visible={twoFaVisible} animationType="slide" transparent onRequestClose={() => setTwoFaVisible(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalSheet, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <View style={styles.modalHandle} />
+            <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>İki Faktörlü Doğrulama</Text>
+            <Text style={[styles.modalSub, { color: colors.textMuted }]}>
+              Instagram'ın sana gönderdiği 6 haneli kodu gir.
+            </Text>
+            <TextInput
+              style={[styles.codeInput, { backgroundColor: colors.background, borderColor: colors.border, color: colors.textPrimary }]}
+              placeholder="000000"
+              placeholderTextColor={colors.textMuted}
+              value={twoFaCode}
+              onChangeText={setTwoFaCode}
+              keyboardType="number-pad"
+              maxLength={6}
+              textAlign="center"
+            />
+            {twoFaError ? <Text style={[styles.errorText, { color: colors.danger, textAlign: 'center', marginBottom: SPACING.sm }]}>{twoFaError}</Text> : null}
+            <TouchableOpacity
+              style={[styles.btn, { backgroundColor: colors.purple }]}
+              onPress={handleVerify2fa}
+              disabled={twoFaLoading}
+              activeOpacity={0.85}
+            >
+              {twoFaLoading
+                ? <ActivityIndicator color="#fff" />
+                : <Text style={styles.btnText}>Doğrula</Text>
+              }
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setTwoFaVisible(false)} style={{ marginTop: SPACING.md, alignItems: 'center' }}>
+              <Text style={[styles.cancelText, { color: colors.textMuted }]}>İptal</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Şeffaflık Modal */}
+      <Modal visible={privacyVisible} animationType="slide" transparent onRequestClose={() => setPrivacyVisible(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalSheet, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <View style={styles.modalHandle} />
+            <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Verilerinle Ne Yapıyoruz?</Text>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              {[
+                { icon: '✅', text: 'Instagram şifreni asla görmüyoruz veya kaydetmiyoruz.' },
+                { icon: '✅', text: 'Verilerini üçüncü taraflarla paylaşmıyoruz.' },
+                { icon: '✅', text: 'Analiz sonuçları AES-256 ile şifreli saklanır.' },
+                { icon: '✅', text: 'Konum, rehber veya mikrofon erişimi istemiyoruz.' },
+                { icon: '✅', text: 'İstediğin zaman tüm verilerini silebilirsin.' },
+                { icon: '🔒', text: 'Yalnızca takipçi listesi, story izleyicileri ve gönderi etkileşimlerine erişiyoruz.' },
+              ].map((row, i) => (
+                <View key={i} style={styles.modalRow}>
+                  <Text style={styles.modalRowIcon}>{row.icon}</Text>
+                  <Text style={[styles.modalRowText, { color: colors.textSecondary }]}>{row.text}</Text>
+                </View>
+              ))}
+              <Text style={[styles.modalFooterNote, { color: colors.textMuted }]}>
+                Daha fazla bilgi için Ayarlar → Gizlilik Politikası
+              </Text>
+            </ScrollView>
+            <TouchableOpacity
+              style={[styles.btn, { backgroundColor: colors.purple, marginTop: SPACING.sm }]}
+              onPress={() => setPrivacyVisible(false)}
+            >
+              <Text style={styles.btnText}>Anladım</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -372,111 +295,91 @@ const styles = StyleSheet.create({
   main:      { flex: 1 },
   container: { flex: 1, paddingHorizontal: SPACING.lg, justifyContent: 'center' },
   content:   { width: '100%' },
+  footer:    { paddingBottom: SPACING.lg, alignItems: 'center', paddingHorizontal: SPACING.lg },
 
-  footer: { paddingBottom: SPACING.lg, alignItems: 'center' },
-  legal:  { fontSize: 11, textAlign: 'center' },
-
-  igHeader: { alignItems: 'center', marginBottom: SPACING.xl * 1.5 },
+  header: { alignItems: 'center', marginBottom: SPACING.xl },
   igIconWrap: {
     width: 72, height: 72, borderRadius: 20,
     backgroundColor: IG_COLOR,
     alignItems: 'center', justifyContent: 'center',
-    marginBottom: SPACING.md,
-    ...GLOSS,
+    marginBottom: SPACING.md, ...GLOSS,
   },
   titleBold: { fontSize: 22, fontWeight: '800', marginBottom: SPACING.xs, textAlign: 'center' },
-  subtitle:  { fontSize: 14, textAlign: 'center' },
+  subtitle:  { fontSize: 14, textAlign: 'center', lineHeight: 20 },
 
-  inputLabel: { fontSize: 13, fontWeight: '500', marginBottom: SPACING.xs },
-  inputWrap: {
-    flexDirection: 'row', alignItems: 'center',
-    borderRadius: RADIUS.md, ...GLOSS,
-    paddingHorizontal: SPACING.md, marginBottom: SPACING.lg,
-  },
-  atSign:    { fontSize: 16, marginRight: 4 },
-  inputIcon: { marginRight: SPACING.sm },
+  form: { marginBottom: SPACING.lg },
   input: {
-    flex: 1, fontSize: 15,
-    paddingVertical: SPACING.md,
+    borderWidth: 1, borderRadius: RADIUS.md,
+    paddingHorizontal: SPACING.md, paddingVertical: 14,
+    fontSize: 15, marginBottom: SPACING.sm,
   },
-  eyeBtn: { padding: SPACING.xs },
+  passWrap: {
+    flexDirection: 'row', alignItems: 'center',
+    borderWidth: 1, borderRadius: RADIUS.md,
+    marginBottom: SPACING.sm, overflow: 'hidden',
+  },
+  passInput: {
+    flex: 1, paddingHorizontal: SPACING.md, paddingVertical: 14, fontSize: 15,
+  },
+  eyeBtn: { paddingHorizontal: SPACING.md },
+
+  errorBox: {
+    borderWidth: 1, borderRadius: RADIUS.md,
+    padding: SPACING.sm, marginBottom: SPACING.sm,
+  },
+  errorText: { fontSize: 13 },
 
   btn: {
-    borderRadius: RADIUS.full,
-    paddingVertical: SPACING.md, alignItems: 'center',
-    marginBottom: SPACING.md,
-    ...GLOSS,
+    borderRadius: RADIUS.full, paddingVertical: 15,
+    alignItems: 'center', marginBottom: SPACING.sm, ...GLOSS,
   },
-  btnDisabled: { opacity: 0.4 },
-  btnInner:    { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
-  btnText:     { color: '#1A1200', fontSize: 16, fontWeight: '700' },
+  btnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
 
-  // Test Nav
-  testNavWrap: { marginTop: SPACING.md, marginBottom: SPACING.xl },
-  testNavLabel: { fontSize: 10, fontWeight: '700', textAlign: 'center', letterSpacing: 1, marginBottom: SPACING.sm },
-  testRow: { flexDirection: 'row', gap: SPACING.sm },
-  testBtn: { flex: 1, padding: SPACING.sm, borderRadius: RADIUS.md, alignItems: 'center', ...GLOSS },
-  testBtnText: { fontSize: 12, fontWeight: '700' },
+  devPanel: {
+    borderWidth: 1, borderRadius: RADIUS.lg,
+    padding: SPACING.md, marginBottom: SPACING.lg,
+  },
+  devHeader:    { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginBottom: SPACING.md },
+  devBadge:     { borderRadius: RADIUS.sm, paddingHorizontal: 6, paddingVertical: 2 },
+  devBadgeText: { color: '#fff', fontSize: 9, fontWeight: '800', letterSpacing: 1 },
+  devTitle:     { fontSize: 12, fontWeight: '600' },
+  devBtn:       { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, padding: SPACING.sm, borderRadius: RADIUS.md, marginBottom: SPACING.md },
+  devBtnText:   { fontSize: 13, fontWeight: '700' },
+  testRow:      { flexDirection: 'row', gap: SPACING.sm },
+  testBtn:      { flex: 1, padding: SPACING.sm, borderRadius: RADIUS.md, alignItems: 'center' },
+  testBtnText:  { fontSize: 12, fontWeight: '700' },
 
-  bottomNote: {
+  privacyBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
-    marginBottom: SPACING.xl, justifyContent: 'center',
+    borderWidth: 1, borderRadius: RADIUS.full,
+    paddingHorizontal: SPACING.md, paddingVertical: 8,
+    alignSelf: 'center', marginBottom: SPACING.xl,
   },
-  bottomNoteText: { fontSize: 12, flex: 1 },
+  privacyBtnText: { fontSize: 13, fontWeight: '600' },
 
   legal: { fontSize: 11, textAlign: 'center', lineHeight: 17 },
 
-  // Sheet
-  sheetOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)' },
-  sheetWrapper: { position: 'absolute', bottom: 0, left: 0, right: 0 },
-  sheet: {
+  // Modals
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
+  modalSheet: {
     borderTopLeftRadius: 24, borderTopRightRadius: 24,
-    padding: SPACING.xl, paddingBottom: SPACING.xxl,
-    ...GLOSS, borderBottomWidth: 0,
+    borderWidth: 1, padding: SPACING.lg, paddingBottom: SPACING.xxl, maxHeight: '80%',
   },
-  sheetHandle: {
+  modalHandle: {
     width: 36, height: 4, borderRadius: 2,
-    alignSelf: 'center', marginBottom: SPACING.lg,
+    backgroundColor: '#444', alignSelf: 'center', marginBottom: SPACING.lg,
   },
-  sheetHeader: {
-    flexDirection: 'row', alignItems: 'center',
-    gap: SPACING.md, marginBottom: SPACING.lg,
-  },
-  igIconSmall: {
-    width: 40, height: 40, borderRadius: 12,
-    backgroundColor: IG_COLOR,
-    alignItems: 'center', justifyContent: 'center',
-    ...GLOSS,
-  },
-  sheetTitle: { fontSize: 16, fontWeight: '700' },
-  sheetSub:   { fontSize: 13, marginTop: 2 },
+  modalTitle:      { fontSize: 20, fontWeight: '800', marginBottom: SPACING.sm },
+  modalSub:        { fontSize: 14, lineHeight: 20, marginBottom: SPACING.lg },
+  modalRow:        { flexDirection: 'row', alignItems: 'flex-start', gap: SPACING.sm, marginBottom: SPACING.md },
+  modalRowIcon:    { fontSize: 16, marginTop: 1 },
+  modalRowText:    { fontSize: 14, lineHeight: 21, flex: 1 },
+  modalFooterNote: { fontSize: 12, textAlign: 'center', marginTop: SPACING.sm, marginBottom: SPACING.lg },
 
-  trustNote: {
-    flexDirection: 'row', alignItems: 'flex-start', gap: 8,
-    borderRadius: RADIUS.md,
-    padding: SPACING.md, marginBottom: SPACING.lg,
+  codeInput: {
+    borderWidth: 1, borderRadius: RADIUS.md,
+    paddingVertical: 14, fontSize: 24, fontWeight: '800',
+    letterSpacing: 8, marginBottom: SPACING.md,
   },
-  trustNoteText: { fontSize: 12, flex: 1, lineHeight: 18 },
-
-  errorBox: {
-    flexDirection: 'row', alignItems: 'center', gap: SPACING.xs,
-    backgroundColor: '#FF6B6B18', borderRadius: RADIUS.sm,
-    padding: SPACING.md, marginBottom: SPACING.md,
-  },
-  errorText: { fontSize: 13, color: '#FF6B6B', flex: 1 },
-
-  disclaimerRow: {
-    flexDirection: 'row', alignItems: 'flex-start',
-    gap: SPACING.sm, marginBottom: SPACING.md,
-  },
-  checkbox: {
-    width: 20, height: 20, borderRadius: 5, borderWidth: 1.5,
-    alignItems: 'center', justifyContent: 'center',
-    marginTop: 1, flexShrink: 0,
-  },
-  checkboxActive: {
-  },
-  disclaimerText: {
-    fontSize: 12, flex: 1, lineHeight: 18,
-  },
+  cancelText: { fontSize: 14 },
 });
