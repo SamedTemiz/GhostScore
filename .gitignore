@@ -9,3 +9,11 @@ backend/.env
 backend/private.pem
 venv/
 backend/venv/
+
+# Android build artifacts
+android/local.properties
+android/.gradle/
+android/build/
+android/app/build/
+android/app/release/
+assets/main/old/

@@ -88,9 +88,9 @@ function BackgroundGhost({ delay = 0 }) {
   );
 }
 
-export default function AnalysisScreen({ navigation }) {
+export default function AnalysisScreen({ navigation, route }) {
   const { colors } = useTheme();
-  const { user, data, analysisError } = useAuth();
+  const { user, data, analysisError, loginWithSession } = useAuth();
   const [msgIndex, setMsgIndex] = useState(0);
   const [minDone, setMinDone]   = useState(false);
   const [timedOut, setTimedOut] = useState(false);
@@ -101,11 +101,25 @@ export default function AnalysisScreen({ navigation }) {
   const floatAnim    = useRef(new Animated.Value(0)).current;
   const timeoutRef   = useRef(null);
 
-  // Progress bar + minimum screen time
+  // Progress bar: MIN_DURATION'a kadar dolar, sonra data gelene kadar pulse yapar
   useEffect(() => {
-    Animated.timing(progressAnim, {
-      toValue: 1, duration: MIN_DURATION, useNativeDriver: false,
-    }).start();
+    const runProgress = () => {
+      progressAnim.setValue(0);
+      Animated.timing(progressAnim, {
+        toValue: 0.85, duration: MIN_DURATION, useNativeDriver: false,
+      }).start(({ finished }) => {
+        if (!finished) return;
+        // 85'te durdu, pulse yap (0.75-0.85 arası gidip gel)
+        const pulse = Animated.loop(
+          Animated.sequence([
+            Animated.timing(progressAnim, { toValue: 0.75, duration: 800, useNativeDriver: false }),
+            Animated.timing(progressAnim, { toValue: 0.85, duration: 800, useNativeDriver: false }),
+          ])
+        );
+        pulse.start();
+      });
+    };
+    runProgress();
     const t = setTimeout(() => setMinDone(true), MIN_DURATION);
     return () => clearTimeout(t);
   }, []);
@@ -140,15 +154,25 @@ export default function AnalysisScreen({ navigation }) {
     return () => clearInterval(interval);
   }, []);
 
-  const isSimulation = navigation.getState().routes.find(r => r.name === 'Analysis')?.params?.simulation;
+  const params = navigation.getState().routes.find(r => r.name === 'Analysis')?.params ?? {};
+  const isSimulation = params.simulation;
+  const sessionId    = params.sessionId;
+
+  // sessionId ile backend login çağrısı
+  useEffect(() => {
+    if (!sessionId) return;
+    loginWithSession(sessionId).catch(() => {});
+  }, [sessionId]);
 
   // Başarılı → Results'a geç
   useEffect(() => {
     if ((data || isSimulation) && minDone) {
       clearTimeout(timeoutRef.current);
+      // Progress bar'ı %100'e tamamla
+      Animated.timing(progressAnim, { toValue: 1, duration: 400, useNativeDriver: false }).start();
       const t = setTimeout(() => {
         navigation.reset({ index: 0, routes: [{ name: 'Results' }] });
-      }, 500);
+      }, 600);
       return () => clearTimeout(t);
     }
   }, [data, minDone, isSimulation]);
@@ -207,7 +231,9 @@ export default function AnalysisScreen({ navigation }) {
         </View>
 
         <Text style={[styles.footer, { color: colors.textMuted }]}>
-          @{user?.username || data?.profile?.username || 'hesap'} analiz ediliyor
+          {user?.username || data?.profile?.username
+            ? `@${user?.username || data?.profile?.username} analiz ediliyor`
+            : 'Instagram hesabın analiz ediliyor'}
         </Text>
       </View>
     </SafeAreaView>

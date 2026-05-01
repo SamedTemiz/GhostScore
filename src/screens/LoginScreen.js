@@ -1,36 +1,34 @@
 import { HugeiconsIcon } from '@hugeicons/react-native';
-import { InstagramIcon, GearsIcon, ShieldKeyIcon, ViewIcon, ViewOffSlashIcon } from '@hugeicons/core-free-icons';
+import { InstagramIcon, GearsIcon, ShieldKeyIcon } from '@hugeicons/core-free-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
-  View, Text, TouchableOpacity, TextInput,
+  View, Text, TouchableOpacity,
   StyleSheet, StatusBar, Modal, ScrollView,
-  ActivityIndicator, KeyboardAvoidingView, Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { useState, useRef, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { WebView } from 'react-native-webview';
+import CookieManager from '@react-native-cookies/cookies';
 import { SPACING, RADIUS, SHADOWS, GLOSS } from '../constants/theme';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 
 const IG_COLOR     = '#C13584';
 const DEV_MODE_KEY = 'gs_dev_mode';
+const IG_LOGIN_URL = 'https://www.instagram.com/accounts/login/';
+const IG_HOME_URL  = 'https://www.instagram.com/';
 
 export default function LoginScreen({ navigation }) {
   const { colors }                          = useTheme();
-  const { login, verify2fa, loginWithMock, loading, error } = useAuth();
+  const { loginWithSession, loginWithMock, loading, error, setError } = useAuth();
 
-  const [username, setUsername]       = useState('');
-  const [password, setPassword]       = useState('');
-  const [showPass, setShowPass]       = useState(false);
-  const [devMode, setDevMode]         = useState(false);
+  const [devMode, setDevMode]               = useState(false);
   const [privacyVisible, setPrivacyVisible] = useState(false);
-
-  // 2FA state
-  const [twoFaVisible, setTwoFaVisible]       = useState(false);
-  const [twoFaCode, setTwoFaCode]             = useState('');
-  const [twoFaIdentifier, setTwoFaIdentifier] = useState('');
-  const [twoFaError, setTwoFaError]           = useState('');
-  const [twoFaLoading, setTwoFaLoading]       = useState(false);
+  const [webviewVisible, setWebviewVisible] = useState(false);
+  const [webviewLoading, setWebviewLoading] = useState(true);
+  const [extracting, setExtracting]         = useState(false);
+  const [loggedInToIG, setLoggedInToIG]     = useState(false);
 
   const tapCount = useRef(0);
   const tapTimer = useRef(null);
@@ -57,200 +55,183 @@ export default function LoginScreen({ navigation }) {
     navigation.reset({ index: 0, routes: [{ name: 'Main' }] });
   };
 
-  const handleLogin = async () => {
-    if (!username.trim() || !password.trim()) return;
+  const openWebView = async () => {
+    await CookieManager.clearAll();
+    if (setError) setError(null);
+    setLoggedInToIG(false);
+    setWebviewVisible(true);
+    setWebviewLoading(true);
+  };
+
+  const extractAndLogin = async () => {
+    if (extracting) return;
+    setExtracting(true);
     try {
-      await login(username.trim(), password);
-      navigation.reset({ index: 0, routes: [{ name: 'Analysis' }] });
-    } catch (err) {
-      if (err.status === 202) {
-        setTwoFaIdentifier(err.twoFaIdentifier || '');
-        setTwoFaVisible(true);
+      const cookies = await CookieManager.get('https://www.instagram.com');
+      const sessionId = cookies?.sessionid?.value;
+
+      if (!sessionId) {
+        setExtracting(false);
+        if (setError) setError('Oturum bilgisi alınamadı. Lütfen Instagram\'a giriş yap.');
+        return;
       }
+
+      setWebviewVisible(false);
+      navigation.reset({ index: 0, routes: [{ name: 'Analysis', params: { sessionId } }] });
+    } catch (err) {
+      setExtracting(false);
     }
   };
 
-  const handleVerify2fa = async () => {
-    if (!twoFaCode.trim()) return;
-    setTwoFaLoading(true);
-    setTwoFaError('');
-    try {
-      await verify2fa(username.trim(), twoFaCode.trim(), twoFaIdentifier);
-      setTwoFaVisible(false);
-      navigation.reset({ index: 0, routes: [{ name: 'Analysis' }] });
-    } catch (err) {
-      setTwoFaError(err.message || 'Kod hatalı, tekrar dene.');
-    } finally {
-      setTwoFaLoading(false);
-    }
+  const handleNavigationChange = async (navState) => {
+    const { url } = navState;
+    if (!url) return;
+
+    const isLoginPage = url.includes('/accounts/login') || url.includes('/accounts/emailsignup');
+    const isOnIG = url.startsWith('https://www.instagram.com') && !isLoginPage;
+
+    if (isOnIG) setLoggedInToIG(true);
+
+    const isHome = url === IG_HOME_URL || url === 'https://www.instagram.com' || url.startsWith('https://www.instagram.com/?');
+    if (!isHome || extracting) return;
+
+    await extractAndLogin();
   };
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]}>
       <StatusBar barStyle="dark-content" />
 
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <View style={styles.main}>
-          <View style={[styles.container, { backgroundColor: colors.background }]}>
-            <View style={styles.content}>
+      <View style={styles.main}>
+        <View style={[styles.container, { backgroundColor: colors.background }]}>
+          <View style={styles.content}>
 
-              {/* Başlık */}
-              <View style={styles.header}>
-                <View style={[styles.igIconWrap, SHADOWS.glowPurple]}>
-                  <HugeiconsIcon icon={InstagramIcon} size={36} color="#fff" />
-                </View>
-                <Text style={[styles.titleBold, { color: colors.textPrimary }]}>Hesabına Giriş Yap</Text>
-                <Text style={[styles.subtitle, { color: colors.textMuted }]}>
-                  Instagram kullanıcı adı ve şifrenle giriş yap.
-                </Text>
+            {/* Başlık */}
+            <View style={styles.header}>
+              <View style={[styles.igIconWrap, SHADOWS.glowPurple]}>
+                <HugeiconsIcon icon={InstagramIcon} size={36} color="#fff" />
               </View>
-
-              {/* Form */}
-              <View style={styles.form}>
-                <TextInput
-                  style={[styles.input, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.textPrimary }]}
-                  placeholder="Kullanıcı adı"
-                  placeholderTextColor={colors.textMuted}
-                  value={username}
-                  onChangeText={setUsername}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  returnKeyType="next"
-                  autoComplete="username"
-                  textContentType="username"
-                />
-
-                <View style={[styles.passWrap, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                  <TextInput
-                    style={[styles.passInput, { color: colors.textPrimary }]}
-                    placeholder="Şifre"
-                    placeholderTextColor={colors.textMuted}
-                    value={password}
-                    onChangeText={setPassword}
-                    secureTextEntry={!showPass}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    returnKeyType="done"
-                    onSubmitEditing={handleLogin}
-                    autoComplete="current-password"
-                    textContentType="password"
-                  />
-                  <TouchableOpacity onPress={() => setShowPass(v => !v)} style={styles.eyeBtn}>
-                    <HugeiconsIcon icon={showPass ? ViewOffSlashIcon : ViewIcon} size={20} color={colors.textMuted} />
-                  </TouchableOpacity>
-                </View>
-
-                {/* Hata */}
-                {error ? (
-                  <View style={[styles.errorBox, { backgroundColor: colors.danger + '15', borderColor: colors.danger + '40' }]}>
-                    <Text style={[styles.errorText, { color: colors.danger }]}>{error}</Text>
-                  </View>
-                ) : null}
-
-                {/* Giriş butonu */}
-                <TouchableOpacity
-                  style={[styles.btn, { backgroundColor: colors.purple, opacity: (!username.trim() || !password.trim()) ? 0.5 : 1 }, SHADOWS.glowPurple]}
-                  onPress={handleLogin}
-                  disabled={loading || !username.trim() || !password.trim()}
-                  activeOpacity={0.85}
-                >
-                  {loading
-                    ? <ActivityIndicator color="#fff" />
-                    : <Text style={styles.btnText}>Giriş Yap</Text>
-                  }
-                </TouchableOpacity>
-              </View>
-
-              {/* Dev panel */}
-              {devMode && (
-                <View style={[styles.devPanel, { borderColor: colors.purple + '40', backgroundColor: colors.purple + '10' }]}>
-                  <View style={styles.devHeader}>
-                    <View style={[styles.devBadge, { backgroundColor: colors.purple }]}>
-                      <Text style={styles.devBadgeText}>DEV</Text>
-                    </View>
-                    <Text style={[styles.devTitle, { color: colors.textMuted }]}>Developer Mode</Text>
-                  </View>
-                  <TouchableOpacity
-                    style={[styles.devBtn, { backgroundColor: colors.purple + '20' }]}
-                    onPress={handleMockLogin}
-                  >
-                    <HugeiconsIcon icon={GearsIcon} size={15} color={colors.purple} />
-                    <Text style={[styles.devBtnText, { color: colors.purple }]}>Mock Data ile Giriş</Text>
-                  </TouchableOpacity>
-                  <View style={styles.testRow}>
-                    {[
-                      { label: 'Dashboard', screen: 'Main',     color: colors.purple },
-                      { label: 'Analiz',    screen: 'Analysis', color: colors.mauve, params: { simulation: true } },
-                      { label: 'Sonuçlar', screen: 'Results',  color: colors.teal },
-                    ].map(({ label, screen, color, params }) => (
-                      <TouchableOpacity
-                        key={screen}
-                        style={[styles.testBtn, { backgroundColor: color + '20' }]}
-                        onPress={() => navigation.navigate(screen, params)}
-                      >
-                        <Text style={[styles.testBtnText, { color }]}>{label}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                </View>
-              )}
-
-              {/* Şeffaflık butonu */}
-              <TouchableOpacity
-                onPress={() => setPrivacyVisible(true)}
-                style={[styles.privacyBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
-              >
-                <HugeiconsIcon icon={ShieldKeyIcon} size={14} color={colors.teal} />
-                <Text style={[styles.privacyBtnText, { color: colors.teal }]}>Verilerinle ne yapıyoruz?</Text>
-              </TouchableOpacity>
-
+              <Text style={[styles.titleBold, { color: colors.textPrimary }]}>Instagram ile Giriş Yap</Text>
+              <Text style={[styles.subtitle, { color: colors.textMuted }]}>
+                Instagram'ın güvenli giriş sayfası açılacak. Şifren bize iletilmez.
+              </Text>
             </View>
-          </View>
 
-          <TouchableOpacity style={styles.footer} onPress={handleFooterTap} activeOpacity={1}>
-            <Text style={[styles.legal, { color: colors.textMuted }]}>
-              Bu uygulama Instagram LLC ile resmi olarak ilişkili değildir.{devMode ? '  ⚙️' : ''}
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </KeyboardAvoidingView>
+            {/* Hata */}
+            {error ? (
+              <View style={[styles.errorBox, { backgroundColor: colors.danger + '15', borderColor: colors.danger + '40' }]}>
+                <Text style={[styles.errorText, { color: colors.danger }]}>{error}</Text>
+              </View>
+            ) : null}
 
-      {/* 2FA Modal */}
-      <Modal visible={twoFaVisible} animationType="slide" transparent onRequestClose={() => setTwoFaVisible(false)}>
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalSheet, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <View style={styles.modalHandle} />
-            <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>İki Faktörlü Doğrulama</Text>
-            <Text style={[styles.modalSub, { color: colors.textMuted }]}>
-              Instagram'ın sana gönderdiği 6 haneli kodu gir.
-            </Text>
-            <TextInput
-              style={[styles.codeInput, { backgroundColor: colors.background, borderColor: colors.border, color: colors.textPrimary }]}
-              placeholder="000000"
-              placeholderTextColor={colors.textMuted}
-              value={twoFaCode}
-              onChangeText={setTwoFaCode}
-              keyboardType="number-pad"
-              maxLength={6}
-              textAlign="center"
-            />
-            {twoFaError ? <Text style={[styles.errorText, { color: colors.danger, textAlign: 'center', marginBottom: SPACING.sm }]}>{twoFaError}</Text> : null}
+            {/* Giriş butonu */}
             <TouchableOpacity
-              style={[styles.btn, { backgroundColor: colors.purple }]}
-              onPress={handleVerify2fa}
-              disabled={twoFaLoading}
+              style={[styles.btn, { backgroundColor: IG_COLOR }, SHADOWS.glowPurple]}
+              onPress={openWebView}
+              disabled={loading || extracting}
               activeOpacity={0.85}
             >
-              {twoFaLoading
+              {loading || extracting
                 ? <ActivityIndicator color="#fff" />
-                : <Text style={styles.btnText}>Doğrula</Text>
+                : (
+                  <View style={styles.btnInner}>
+                    <HugeiconsIcon icon={InstagramIcon} size={20} color="#fff" />
+                    <Text style={styles.btnText}>Instagram ile Giriş Yap</Text>
+                  </View>
+                )
               }
             </TouchableOpacity>
-            <TouchableOpacity onPress={() => setTwoFaVisible(false)} style={{ marginTop: SPACING.md, alignItems: 'center' }}>
-              <Text style={[styles.cancelText, { color: colors.textMuted }]}>İptal</Text>
+
+            {/* Dev panel */}
+            {devMode && (
+              <View style={[styles.devPanel, { borderColor: colors.purple + '40', backgroundColor: colors.purple + '10' }]}>
+                <View style={styles.devHeader}>
+                  <View style={[styles.devBadge, { backgroundColor: colors.purple }]}>
+                    <Text style={styles.devBadgeText}>DEV</Text>
+                  </View>
+                  <Text style={[styles.devTitle, { color: colors.textMuted }]}>Developer Mode</Text>
+                </View>
+                <TouchableOpacity
+                  style={[styles.devBtn, { backgroundColor: colors.purple + '20' }]}
+                  onPress={handleMockLogin}
+                >
+                  <HugeiconsIcon icon={GearsIcon} size={15} color={colors.purple} />
+                  <Text style={[styles.devBtnText, { color: colors.purple }]}>Mock Data ile Giriş</Text>
+                </TouchableOpacity>
+                <View style={styles.testRow}>
+                  {[
+                    { label: 'Dashboard', screen: 'Main',     color: colors.purple },
+                    { label: 'Analiz',    screen: 'Analysis', color: colors.mauve, params: { simulation: true } },
+                    { label: 'Sonuçlar', screen: 'Results',  color: colors.teal },
+                  ].map(({ label, screen, color, params }) => (
+                    <TouchableOpacity
+                      key={screen}
+                      style={[styles.testBtn, { backgroundColor: color + '20' }]}
+                      onPress={() => navigation.navigate(screen, params)}
+                    >
+                      <Text style={[styles.testBtnText, { color }]}>{label}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+            )}
+
+            {/* Şeffaflık butonu */}
+            <TouchableOpacity
+              onPress={() => setPrivacyVisible(true)}
+              style={[styles.privacyBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
+            >
+              <HugeiconsIcon icon={ShieldKeyIcon} size={14} color={colors.teal} />
+              <Text style={[styles.privacyBtnText, { color: colors.teal }]}>Verilerinle ne yapıyoruz?</Text>
             </TouchableOpacity>
+
           </View>
         </View>
+
+        <TouchableOpacity style={styles.footer} onPress={handleFooterTap} activeOpacity={1}>
+          <Text style={[styles.legal, { color: colors.textMuted }]}>
+            Bu uygulama Instagram LLC ile resmi olarak ilişkili değildir.{devMode ? '  ⚙️' : ''}
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Instagram WebView Modal */}
+      <Modal visible={webviewVisible} animationType="slide" onRequestClose={() => setWebviewVisible(false)}>
+        <SafeAreaView style={[styles.webviewSafe, { backgroundColor: colors.background }]}>
+          <View style={[styles.webviewHeader, { borderBottomColor: colors.border }]}>
+            <TouchableOpacity onPress={() => setWebviewVisible(false)} style={styles.webviewCancelBtn}>
+              <Text style={[styles.webviewCloseText, { color: colors.textMuted }]}>İptal</Text>
+            </TouchableOpacity>
+            <Text style={[styles.webviewTitle, { color: colors.textPrimary }]}>Instagram Giriş</Text>
+            {loggedInToIG ? (
+              <TouchableOpacity onPress={extractAndLogin} style={[styles.webviewDoneBtn, { backgroundColor: IG_COLOR }]} disabled={extracting}>
+                {extracting
+                  ? <ActivityIndicator size="small" color="#fff" />
+                  : <Text style={styles.webviewDoneText}>Devam Et</Text>
+                }
+              </TouchableOpacity>
+            ) : (
+              <View style={styles.webviewCancelBtn} />
+            )}
+          </View>
+
+          {webviewLoading && (
+            <View style={styles.webviewSpinner}>
+              <ActivityIndicator size="large" color={IG_COLOR} />
+            </View>
+          )}
+
+          <WebView
+            source={{ uri: IG_LOGIN_URL }}
+            onNavigationStateChange={handleNavigationChange}
+            onLoadStart={() => setWebviewLoading(true)}
+            onLoadEnd={() => setWebviewLoading(false)}
+            sharedCookiesEnabled
+            thirdPartyCookiesEnabled
+            style={{ flex: 1 }}
+            userAgent="Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
+          />
+        </SafeAreaView>
       </Modal>
 
       {/* Şeffaflık Modal */}
@@ -307,22 +288,6 @@ const styles = StyleSheet.create({
   titleBold: { fontSize: 22, fontWeight: '800', marginBottom: SPACING.xs, textAlign: 'center' },
   subtitle:  { fontSize: 14, textAlign: 'center', lineHeight: 20 },
 
-  form: { marginBottom: SPACING.lg },
-  input: {
-    borderWidth: 1, borderRadius: RADIUS.md,
-    paddingHorizontal: SPACING.md, paddingVertical: 14,
-    fontSize: 15, marginBottom: SPACING.sm,
-  },
-  passWrap: {
-    flexDirection: 'row', alignItems: 'center',
-    borderWidth: 1, borderRadius: RADIUS.md,
-    marginBottom: SPACING.sm, overflow: 'hidden',
-  },
-  passInput: {
-    flex: 1, paddingHorizontal: SPACING.md, paddingVertical: 14, fontSize: 15,
-  },
-  eyeBtn: { paddingHorizontal: SPACING.md },
-
   errorBox: {
     borderWidth: 1, borderRadius: RADIUS.md,
     padding: SPACING.sm, marginBottom: SPACING.sm,
@@ -331,9 +296,10 @@ const styles = StyleSheet.create({
 
   btn: {
     borderRadius: RADIUS.full, paddingVertical: 15,
-    alignItems: 'center', marginBottom: SPACING.sm, ...GLOSS,
+    alignItems: 'center', marginBottom: SPACING.lg, ...GLOSS,
   },
-  btnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  btnInner: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
+  btnText:  { color: '#fff', fontSize: 16, fontWeight: '700' },
 
   devPanel: {
     borderWidth: 1, borderRadius: RADIUS.lg,
@@ -359,6 +325,16 @@ const styles = StyleSheet.create({
 
   legal: { fontSize: 11, textAlign: 'center', lineHeight: 17 },
 
+  // WebView
+  webviewSafe:      { flex: 1 },
+  webviewHeader:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: SPACING.lg, paddingVertical: SPACING.md, borderBottomWidth: 1 },
+  webviewTitle:     { fontSize: 16, fontWeight: '700', textAlign: 'center', flex: 1 },
+  webviewCancelBtn: { width: 60 },
+  webviewCloseText: { fontSize: 15 },
+  webviewDoneBtn:   { borderRadius: RADIUS.full, paddingHorizontal: SPACING.md, paddingVertical: 6, width: 60, alignItems: 'center' },
+  webviewDoneText:  { color: '#fff', fontSize: 13, fontWeight: '700' },
+  webviewSpinner:   { position: 'absolute', top: '50%', left: '50%', zIndex: 10 },
+
   // Modals
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
   modalSheet: {
@@ -370,16 +346,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#444', alignSelf: 'center', marginBottom: SPACING.lg,
   },
   modalTitle:      { fontSize: 20, fontWeight: '800', marginBottom: SPACING.sm },
-  modalSub:        { fontSize: 14, lineHeight: 20, marginBottom: SPACING.lg },
   modalRow:        { flexDirection: 'row', alignItems: 'flex-start', gap: SPACING.sm, marginBottom: SPACING.md },
   modalRowIcon:    { fontSize: 16, marginTop: 1 },
   modalRowText:    { fontSize: 14, lineHeight: 21, flex: 1 },
   modalFooterNote: { fontSize: 12, textAlign: 'center', marginTop: SPACING.sm, marginBottom: SPACING.lg },
-
-  codeInput: {
-    borderWidth: 1, borderRadius: RADIUS.md,
-    paddingVertical: 14, fontSize: 24, fontWeight: '800',
-    letterSpacing: 8, marginBottom: SPACING.md,
-  },
-  cancelText: { fontSize: 14 },
+  cancelText:      { fontSize: 14 },
 });

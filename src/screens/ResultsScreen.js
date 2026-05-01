@@ -30,15 +30,15 @@ function ScoreRing({ score, size = 130 }) {
 }
 
 // ─── Lock Overlay ─────────────────────────────────────────────────────────────
-function LockOverlay({ onUnlock }) {
+function LockOverlay({ onUnlock, count }) {
   const { colors } = useTheme();
   return (
-    <View style={[styles.lockOverlay, { backgroundColor: colors.background + 'EE', borderColor: colors.border }]}>
-      <HugeiconsIcon icon={LockIcon} size={32} color={colors.textMuted} style={{ marginBottom: SPACING.sm }} />
-      <Text style={[styles.lockTitle, { color: colors.textPrimary }]}>Tümünü Gör</Text>
-      <Text style={[styles.lockSub, { color: colors.textMuted }]}>Listenin tamamına ulaşmak için devam et</Text>
+    <View style={[styles.lockOverlay, { backgroundColor: colors.background + 'CC' }]}>
+      <HugeiconsIcon icon={LockIcon} size={28} color={colors.purple} style={{ marginBottom: SPACING.xs }} />
+      <Text style={[styles.lockTitle, { color: colors.textPrimary }]}>{count} kişi daha gizli</Text>
+      <Text style={[styles.lockSub, { color: colors.textMuted }]}>Listenin tamamını görmek için devam et</Text>
       <TouchableOpacity style={[styles.adBtn, { backgroundColor: colors.purple, flexDirection: 'row', alignItems: 'center', gap: 6 }]} onPress={onUnlock} activeOpacity={0.85}>
-        <HugeiconsIcon icon={ArrowDown01Icon} size={18} color="#fff" />
+        <HugeiconsIcon icon={ArrowDown01Icon} size={16} color="#fff" />
         <Text style={[styles.adBtnText, { color: '#fff' }]}>Tümünü Göster</Text>
       </TouchableOpacity>
     </View>
@@ -46,13 +46,27 @@ function LockOverlay({ onUnlock }) {
 }
 
 // ─── Blurred Row (fake) ───────────────────────────────────────────────────────
-function BlurredRow() {
+function BlurredRow({ item }) {
   const { colors } = useTheme();
+  const [imgErr, setImgErr] = useState(false);
   return (
     <View style={styles.blurRow}>
-      <View style={[styles.blurCircle, { backgroundColor: colors.border }]} />
+      {/* Avatar — gizlenmiş */}
+      <View style={styles.blurAvatarWrap}>
+        {item?.profilePic && !imgErr
+          ? <Image source={{ uri: item.profilePic }} style={[styles.blurCircle, { backgroundColor: colors.border }]} onError={() => setImgErr(true)} />
+          : <View style={[styles.blurCircle, { backgroundColor: colors.border }]} />
+        }
+        <View style={[StyleSheet.absoluteFill, { borderRadius: 22, backgroundColor: colors.background + 'BB' }]} />
+      </View>
       <View style={{ flex: 1, gap: 6 }}>
-        <View style={[styles.blurLine, { backgroundColor: colors.border }]} />
+        {/* Username — üstü örtülü */}
+        <View style={{ position: 'relative' }}>
+          <Text style={[styles.blurUsername, { color: colors.textPrimary, opacity: 0.15 }]}>
+            @{item?.username || 'kullanici'}
+          </Text>
+          <View style={[StyleSheet.absoluteFill, { borderRadius: 4, backgroundColor: colors.border }]} />
+        </View>
         <View style={[styles.blurLine, { width: '45%', backgroundColor: colors.border }]} />
       </View>
     </View>
@@ -95,7 +109,7 @@ function ScoreCard({ profile }) {
         <Text style={[styles.cardBadgeText, { color: colors.purple }]}>GHOST SCORE</Text>
       </View>
       <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: SPACING.lg }}>
-        <Text style={[styles.cardTitle, { color: colors.textPrimary, marginBottom: 0 }]}>Sosyal{'\n'}Skorum</Text>
+        <Text style={[styles.cardTitle, { color: colors.textPrimary, marginBottom: 0, flex: 1 }]}>Sosyal{'\n'}Skorum</Text>
         <Image source={ghost} style={styles.scoreGhost} />
       </View>
 
@@ -143,7 +157,7 @@ function StalkersCard({ stalkers }) {
         <Text style={[styles.cardBadgeText, { color: colors.purple }]}>STALKER LİSTESİ</Text>
       </View>
       <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: SPACING.lg }}>
-        <Text style={[styles.cardTitle, { color: colors.textPrimary, marginBottom: 0 }]}>{stalkers.length} Kişi{'\n'}Seni İzliyor</Text>
+        <Text style={[styles.cardTitle, { color: colors.textPrimary, marginBottom: 0, flex: 1 }]}>{stalkers.length} Kişi{'\n'}Seni İzliyor</Text>
         <HugeiconsIcon icon={ViewIcon} size={42} color={colors.purple + '40'} />
       </View>
 
@@ -170,8 +184,8 @@ function StalkersCard({ stalkers }) {
 
       {!unlocked && stalkers.length > 0 && locked.length > 0 && (
         <View style={styles.lockedSection}>
-          {[0, 1, 2].map((i) => <BlurredRow key={i} />)}
-          <LockOverlay onUnlock={() => setUnlocked(true)} />
+          {locked.slice(0, 3).map((s, i) => <BlurredRow key={i} item={s} />)}
+          <LockOverlay onUnlock={() => setUnlocked(true)} count={locked.length} />
         </View>
       )}
 
@@ -204,7 +218,7 @@ function MutedCard({ ghostFollowers }) {
         <Text style={[styles.cardBadgeText, { color: colors.mauve }]}>HAYALET TAKİPÇİLER</Text>
       </View>
       <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: SPACING.lg }}>
-        <Text style={[styles.cardTitle, { color: colors.textPrimary, marginBottom: 0 }]}>{ghostFollowers.length} Kişi{'\n'}Hiç Etkileşmedi</Text>
+        <Text style={[styles.cardTitle, { color: colors.textPrimary, marginBottom: 0, flex: 1 }]}>{ghostFollowers.length} Kişi{'\n'}Hiç Etkileşime Girmedi</Text>
         <HugeiconsIcon icon={UserMinus01Icon} size={42} color={colors.mauve + '40'} />
       </View>
 
@@ -236,8 +250,8 @@ function MutedCard({ ghostFollowers }) {
           ))}
           {!unlocked && locked.length > 0 && (
             <View style={styles.lockedSection}>
-              {[0, 1, 2].map((i) => <BlurredRow key={i} />)}
-              <LockOverlay onUnlock={() => setUnlocked(true)} />
+              {locked.slice(0, 3).map((g, i) => <BlurredRow key={i} item={g} />)}
+              <LockOverlay onUnlock={() => setUnlocked(true)} count={locked.length} />
             </View>
           )}
           {unlocked && locked.map((g) => (
@@ -269,19 +283,21 @@ function UnfollowersCard({ unfollowers }) {
   return (
     <View style={styles.card}>
       <View style={[styles.cardBadge, { backgroundColor: colors.teal + '25' }]}>
-        <Text style={[styles.cardBadgeText, { color: colors.teal }]}>UNFOLLOWER ALARMI</Text>
+        <Text style={[styles.cardBadgeText, { color: colors.teal }]}>GERİ TAKİP ETMEYENLER</Text>
       </View>
       <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: SPACING.lg }}>
-        <Text style={[styles.cardTitle, { color: colors.textPrimary, marginBottom: 0 }]}>{unfollowers.length} Kişi{'\n'}Takibi Bıraktı</Text>
+        <Text style={[styles.cardTitle, { color: colors.textPrimary, marginBottom: 0, flex: 1 }]}>{unfollowers.length} Kişi{'\n'}Seni Takip Etmiyor</Text>
         <HugeiconsIcon icon={BadgeAlertIcon} size={42} color={colors.teal + '40'} />
       </View>
 
-      <View style={[styles.mutualPill, { backgroundColor: colors.gold + '20', flexDirection: 'row', alignItems: 'center', gap: 6 }]}>
-        <HugeiconsIcon icon={AlertSquareIcon} size={14} color={colors.gold} />
-        <Text style={[styles.mutualText, { color: colors.gold }]}>
-          {mutual} karşılıklı takip bıraktı
-        </Text>
-      </View>
+      {mutual > 0 && (
+        <View style={[styles.mutualPill, { backgroundColor: colors.gold + '20', flexDirection: 'row', alignItems: 'center', gap: 6 }]}>
+          <HugeiconsIcon icon={AlertSquareIcon} size={14} color={colors.gold} />
+          <Text style={[styles.mutualText, { color: colors.gold }]}>
+            {mutual} kişi eskiden seni takip ediyordu
+          </Text>
+        </View>
+      )}
 
       {visible.map((u) => (
         <UserRow
@@ -293,7 +309,7 @@ function UnfollowersCard({ unfollowers }) {
               { borderColor: u.wasFollowedBack ? colors.teal + '50' : colors.border },
             ]}>
               <Text style={{ fontSize: 11, fontWeight: '600', color: u.wasFollowedBack ? colors.teal : colors.textMuted }}>
-                {u.wasFollowedBack ? 'Karşılıklı' : 'Tek taraflı'}
+                {u.wasFollowedBack ? 'Takibi bıraktı' : 'Hiç takip etmedi'}
               </Text>
             </View>
           }
@@ -302,8 +318,8 @@ function UnfollowersCard({ unfollowers }) {
 
       {!unlocked && locked.length > 0 && (
         <View style={styles.lockedSection}>
-          {[0, 1, 2].map((i) => <BlurredRow key={i} />)}
-          <LockOverlay onUnlock={() => setUnlocked(true)} />
+          {locked.slice(0, 3).map((u, i) => <BlurredRow key={i} item={u} />)}
+          <LockOverlay onUnlock={() => setUnlocked(true)} count={locked.length} />
         </View>
       )}
 
@@ -317,7 +333,7 @@ function UnfollowersCard({ unfollowers }) {
               { borderColor: u.wasFollowedBack ? colors.teal + '50' : colors.border },
             ]}>
               <Text style={{ fontSize: 11, fontWeight: '600', color: u.wasFollowedBack ? colors.teal : colors.textMuted }}>
-                {u.wasFollowedBack ? 'Karşılıklı' : 'Tek taraflı'}
+                {u.wasFollowedBack ? 'Takibi bıraktı' : 'Hiç takip etmedi'}
               </Text>
             </View>
           }
@@ -478,15 +494,16 @@ const styles = StyleSheet.create({
 
   // Locked section
   lockedSection: { marginTop: SPACING.xs, position: 'relative', overflow: 'hidden', borderRadius: RADIUS.md, minHeight: 170 },
-  blurRow:   { flexDirection: 'row', alignItems: 'center', paddingVertical: SPACING.md, gap: SPACING.md, opacity: 0.3 },
-  blurCircle: { width: 44, height: 44, borderRadius: 22 },
-  blurLine:   { height: 12, width: '65%', borderRadius: 6 },
+  blurRow:       { flexDirection: 'row', alignItems: 'center', paddingVertical: SPACING.md, gap: SPACING.md },
+  blurAvatarWrap:{ position: 'relative', width: 44, height: 44 },
+  blurCircle:    { width: 44, height: 44, borderRadius: 22 },
+  blurLine:      { height: 12, width: '65%', borderRadius: 6 },
+  blurUsername:  { fontSize: 14, fontWeight: '600', lineHeight: 20 },
 
   lockOverlay: {
     position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
     alignItems: 'center', justifyContent: 'center',
     borderRadius: RADIUS.md, padding: SPACING.lg,
-    borderWidth: 1,
   },
   lockEmoji: { fontSize: 32, marginBottom: SPACING.sm },
   lockTitle: { fontSize: 16, fontWeight: '800', marginBottom: 4 },
