@@ -231,33 +231,34 @@ async def fetch_analysis_data(cl: Client) -> dict:
     Her endpoint bağımsız try/except ile sarılı — bir endpoint 400/403 dönerse
     diğerleri çalışmaya devam eder, kısmi veri döner.
     """
-    # Profil bilgisi — cache'siz çek, Account değil User objesi gelsin
     user_info = await asyncio.to_thread(cl.user_info, cl.user_id, False)
     if not user_info:
         raise RuntimeError("Profil bilgisi alınamadı")
 
-    followers_count  = user_info.follower_count
-    following_count  = user_info.following_count
-    posts_count      = user_info.media_count
-    profile_pic_url  = str(user_info.profile_pic_url) if user_info.profile_pic_url else ""
+    followers_count = user_info.follower_count
+    following_count = user_info.following_count
+    posts_count     = user_info.media_count
+    profile_pic_url = str(user_info.profile_pic_url) if user_info.profile_pic_url else ""
 
     # ── Takipçi / takip listesi ────────────────────────────────
+    # amount=500 ile büyük hesaplar için daha doğru veri sağlanır
     await _safe_delay()
     followers_map: dict = await _safe_fetch(
-        asyncio.to_thread(cl.user_followers, cl.user_id, amount=50),
+        asyncio.to_thread(cl.user_followers, cl.user_id, amount=500),
         label="user_followers", default={},
     )
 
     await _safe_delay()
     following_map: dict = await _safe_fetch(
-        asyncio.to_thread(cl.user_following, cl.user_id, amount=50),
+        asyncio.to_thread(cl.user_following, cl.user_id, amount=500),
         label="user_following", default={},
     )
 
     follower_ids  = set(followers_map.keys())
     following_ids = set(following_map.keys())
-    unfollower_ids = following_ids - follower_ids
 
+    # Takip ettiğimiz ama bizi takip etmeyenler
+    unfollower_ids = following_ids - follower_ids
     unfollowers = []
     for uid in list(unfollower_ids)[:20]:
         u = following_map.get(uid)
@@ -267,34 +268,45 @@ async def fetch_analysis_data(cl: Client) -> dict:
                 "username": u.username,
                 "profile_pic": str(u.profile_pic_url) if u.profile_pic_url else "",
                 "unfollowed_at": "Yakın zamanda",
-                "was_followed_back": uid in follower_ids,
+                # Geri takip etmeyenler listesinde kim olduğunu belirtmek
+                # için friendship geçmişi yoksa bu alan anlamsız — False bırakılır
+                "was_followed_back": False,
             })
 
     # ── Story izleyiciler (stalker tespiti) ────────────────────
-    stalkers = []
+    # Aynı kişi birden fazla story izlerse viewed_stories sayısı artar
     stories = await _safe_fetch(
         asyncio.to_thread(cl.user_stories, cl.user_id),
         label="user_stories", default=[],
     )
-    for story in (stories or [])[:2]:
+
+    # viewer_pk → {user_obj, viewed_stories, is_following} — dedup için dict
+    stalker_map: dict = {}
+    for story in (stories or [])[:5]:
         await _safe_delay()
         viewers = await _safe_fetch(
             asyncio.to_thread(cl.story_viewers, story.pk),
             label="story_viewers", default=[],
         )
-        for viewer in (viewers or [])[:30]:
+        for viewer in (viewers or [])[:50]:
             try:
-                friendship = await asyncio.to_thread(cl.user_friendship_v1, viewer.pk)
-                if not friendship.following:
-                    stalkers.append({
-                        "id": str(viewer.pk),
-                        "username": viewer.username,
-                        "profile_pic": str(viewer.profile_pic_url) if viewer.profile_pic_url else "",
-                        "viewed_stories": 1,
-                        "is_following": False,
-                    })
+                pk = str(viewer.pk)
+                if pk not in stalker_map:
+                    friendship = await asyncio.to_thread(cl.user_friendship_v1, viewer.pk)
+                    if not friendship.following:
+                        stalker_map[pk] = {
+                            "id": pk,
+                            "username": viewer.username,
+                            "profile_pic": str(viewer.profile_pic_url) if viewer.profile_pic_url else "",
+                            "viewed_stories": 1,
+                            "is_following": False,
+                        }
+                else:
+                    stalker_map[pk]["viewed_stories"] += 1
             except Exception:
                 continue
+
+    stalkers = sorted(stalker_map.values(), key=lambda x: x["viewed_stories"], reverse=True)
 
     # ── Hayalet takipçi tespiti ────────────────────────────────
     # Son 4 post → beğenenleri topla → hiç beğenmeyenler = ghost follower
@@ -314,8 +326,8 @@ async def fetch_analysis_data(cl: Client) -> dict:
             for liker in (likers or []):
                 active_liker_ids.add(str(liker.pk))
 
-        # İlk 150 takipçiyi kontrol et (performans limiti)
-        checked = list(followers_map.items())[:150]
+        # amount=500 ile çekilen takipçilerin ilk 300'ünü kontrol et
+        checked = list(followers_map.items())[:300]
         for uid, u in checked:
             if str(uid) not in active_liker_ids:
                 ghost_followers.append({
@@ -326,7 +338,8 @@ async def fetch_analysis_data(cl: Client) -> dict:
                 })
 
     # ── Skor hesabı ────────────────────────────────────────────
-    ghost_ratio = len(ghost_followers) / max(len(followers_map), 1)
+    # Ghost ratio: gerçek takipçi sayısına göre hesapla
+    ghost_ratio = len(ghost_followers) / max(min(followers_count, len(followers_map)), 1)
     ghost_score = _calculate_ghost_score(
         followers=followers_count,
         following=following_count,
