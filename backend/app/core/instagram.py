@@ -37,8 +37,8 @@ log = structlog.get_logger()
 
 # ── Sabitler ──────────────────────────────────────────────────────────────────
 
-MIN_REQUEST_DELAY = 1.5
-MAX_REQUEST_DELAY = 4.0
+MIN_REQUEST_DELAY = 0.8
+MAX_REQUEST_DELAY = 2.0
 
 
 # ── Yardımcı ──────────────────────────────────────────────────────────────────
@@ -64,14 +64,46 @@ _USER_AGENT = (
 )
 
 
-def _build_client(settings: dict | None = None) -> Client:
+def _build_device_from_info(device_info) -> tuple[dict, str]:
+    """Frontend'den gelen gerçek cihaz bilgisinden instagrapi device dict ve UA oluşturur."""
+    mfr        = device_info.manufacturer
+    model      = device_info.model
+    api_level  = device_info.android_version
+    android_v  = device_info.android_release
+    dpi        = device_info.dpi
+    resolution = device_info.resolution
+    # Codename ve CPU için güvenli fallback'ler — bunları frontend'den alamıyoruz
+    codename   = model.lower().replace(" ", "_")
+    cpu        = "unknown"
+    device = {
+        "manufacturer":    mfr,
+        "model":           model,
+        "android_version": api_level,
+        "android_release": android_v,
+        "dpi":             dpi,
+        "resolution":      resolution,
+        "cpu":             cpu,
+    }
+    ua = (
+        f"Instagram 319.0.0.0.75 Android "
+        f"({api_level}/{android_v}; {dpi}; {resolution}; {mfr}; {model}; {codename}; {cpu}; en_US; 563859995)"
+    )
+    return device, ua
+
+
+def _build_client(settings: dict | None = None, device_info=None) -> Client:
     cl = Client()
     cl.delay_range = [MIN_REQUEST_DELAY, MAX_REQUEST_DELAY]
     if settings:
         # Kayıtlı session varsa tam fingerprint geri yükle (cihaz değişmesin)
         cl.set_settings(settings)
+    elif device_info:
+        # Frontend'den gerçek cihaz bilgisi geldi — onu kullan
+        device, ua = _build_device_from_info(device_info)
+        cl.set_device(device)
+        cl.set_user_agent(ua)
     else:
-        # İlk login: sabit Samsung cihazı kullan (rastgele cihaz = ban riski)
+        # Fallback: sabit Samsung cihazı
         cl.set_device(_DEVICE)
         cl.set_user_agent(_USER_AGENT)
     return cl
@@ -175,14 +207,15 @@ async def verify_2fa(username: str, code: str, identifier: str) -> InstagramLogi
         raise ValueError("2FA kodu geçersiz veya süresi dolmuş")
 
 
-async def login_with_sessionid(session_id: str) -> Client:
+async def login_with_sessionid(session_id: str, device_info=None) -> Client:
     """
     WebView'dan alınan sessionid cookie ile Instagram'a bağlanır.
+    device_info verilirse gerçek cihaz fingerprint'i kullanılır (şüpheli giriş bildirimi azalır).
     """
-    cl = _build_client()
+    cl = _build_client(device_info=device_info)
     try:
         await asyncio.to_thread(cl.login_by_sessionid, session_id)
-        log.info("instagram_sessionid_login_success")
+        log.info("instagram_sessionid_login_success", has_device_info=device_info is not None)
         return cl
     except LoginRequired:
         raise ValueError("Session süresi dolmuş. Yeniden giriş gerekiyor.")
@@ -241,35 +274,34 @@ async def fetch_analysis_data(cl: Client) -> dict:
     profile_pic_url = str(user_info.profile_pic_url) if user_info.profile_pic_url else ""
 
     # ── Takipçi / takip listesi ────────────────────────────────
-    # amount=500 ile büyük hesaplar için daha doğru veri sağlanır
     await _safe_delay()
     followers_map: dict = await _safe_fetch(
-        asyncio.to_thread(cl.user_followers, cl.user_id, amount=500),
+        asyncio.to_thread(cl.user_followers, cl.user_id, amount=300),
         label="user_followers", default={},
     )
 
     await _safe_delay()
     following_map: dict = await _safe_fetch(
-        asyncio.to_thread(cl.user_following, cl.user_id, amount=500),
+        asyncio.to_thread(cl.user_following, cl.user_id, amount=200),
         label="user_following", default={},
     )
 
-    follower_ids  = set(followers_map.keys())
-    following_ids = set(following_map.keys())
+    # instagrapi int key döner; story viewer pk'leri de int — str'e normalize et
+    follower_ids  = {str(k) for k in followers_map.keys()}
+    following_ids = {str(k) for k in following_map.keys()}
 
-    # Takip ettiğimiz ama bizi takip etmeyenler
-    unfollower_ids = following_ids - follower_ids
+    # Takip ettiğimiz ama bizi takip etmeyenler (set farkı, tutarlı str ID'lerle)
+    unfollower_str_ids = following_ids - follower_ids
     unfollowers = []
-    for uid in list(unfollower_ids)[:20]:
-        u = following_map.get(uid)
+    for uid_str in list(unfollower_str_ids)[:20]:
+        uid_int = int(uid_str) if uid_str.isdigit() else uid_str
+        u = following_map.get(uid_int)
         if u:
             unfollowers.append({
-                "id": str(uid),
+                "id": uid_str,
                 "username": u.username,
                 "profile_pic": str(u.profile_pic_url) if u.profile_pic_url else "",
                 "unfollowed_at": "Yakın zamanda",
-                # Geri takip etmeyenler listesinde kim olduğunu belirtmek
-                # için friendship geçmişi yoksa bu alan anlamsız — False bırakılır
                 "was_followed_back": False,
             })
 
@@ -281,19 +313,21 @@ async def fetch_analysis_data(cl: Client) -> dict:
     )
 
     # viewer_pk → {user_obj, viewed_stories, is_following} — dedup için dict
+    # Takipçi kontrolü için user_friendship_v1 kullanmıyoruz — O(n) API çağrısı yapar.
+    # Bunun yerine zaten elimizdeki follower_ids setini kullanıyoruz.
     stalker_map: dict = {}
-    for story in (stories or [])[:5]:
+    for story in (stories or [])[:3]:
         await _safe_delay()
         viewers = await _safe_fetch(
             asyncio.to_thread(cl.story_viewers, story.pk),
             label="story_viewers", default=[],
         )
-        for viewer in (viewers or [])[:50]:
+        for viewer in (viewers or [])[:30]:
             try:
                 pk = str(viewer.pk)
+                is_follower = pk in follower_ids
                 if pk not in stalker_map:
-                    friendship = await asyncio.to_thread(cl.user_friendship_v1, viewer.pk)
-                    if not friendship.following:
+                    if not is_follower:
                         stalker_map[pk] = {
                             "id": pk,
                             "username": viewer.username,

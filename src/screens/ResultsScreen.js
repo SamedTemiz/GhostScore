@@ -1,15 +1,18 @@
-import { useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity,
   ScrollView, Dimensions, Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { HugeiconsIcon } from '@hugeicons/react-native';
-import { ViewIcon, UserMinus01Icon, BadgeAlertIcon, LockIcon, ArrowDown01Icon, AlertSquareIcon, Rocket01Icon, ArrowRight01Icon } from '@hugeicons/core-free-icons';
+import { ViewIcon, UserMinus01Icon, BadgeAlertIcon, LockIcon, ArrowDown01Icon, AlertSquareIcon, Rocket01Icon, ArrowRight01Icon, PlayCircleIcon } from '@hugeicons/core-free-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { BannerAd, BannerAdSize, RewardedAd, RewardedAdEventType, AdEventType } from 'react-native-google-mobile-ads';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import { SPACING, RADIUS } from '../constants/theme';
+import { AD_UNIT_IDS } from '../constants/ads';
+import unlockState from '../state/unlockState';
 const { width } = Dimensions.get('window');
 
 // ─── Score Ring ──────────────────────────────────────────────────────────────
@@ -32,13 +35,30 @@ function ScoreRing({ score, size = 130 }) {
 // ─── Lock Overlay ─────────────────────────────────────────────────────────────
 function LockOverlay({ onUnlock, count }) {
   const { colors } = useTheme();
+  const rewardedRef = useRef(null);
+
+  const handleUnlock = useCallback(() => {
+    const rewarded = RewardedAd.createForAdRequest(AD_UNIT_IDS.REWARDED);
+    rewardedRef.current = rewarded;
+
+    const unsubEarned = rewarded.addAdEventListener(RewardedAdEventType.EARNED_REWARD, onUnlock);
+    const unsubError  = rewarded.addAdEventListener(AdEventType.ERROR, onUnlock);
+
+    rewarded.load();
+    const unsubLoaded = rewarded.addAdEventListener(RewardedAdEventType.LOADED, () => {
+      rewarded.show();
+    });
+
+    return () => { unsubEarned(); unsubError(); unsubLoaded(); };
+  }, [onUnlock]);
+
   return (
     <View style={[styles.lockOverlay, { backgroundColor: colors.background + 'CC' }]}>
       <HugeiconsIcon icon={LockIcon} size={28} color={colors.purple} style={{ marginBottom: SPACING.xs }} />
       <Text style={[styles.lockTitle, { color: colors.textPrimary }]}>{count} kişi daha gizli</Text>
       <Text style={[styles.lockSub, { color: colors.textMuted }]}>Listenin tamamını görmek için devam et</Text>
-      <TouchableOpacity style={[styles.adBtn, { backgroundColor: colors.purple, flexDirection: 'row', alignItems: 'center', gap: 6 }]} onPress={onUnlock} activeOpacity={0.85}>
-        <HugeiconsIcon icon={ArrowDown01Icon} size={16} color="#fff" />
+      <TouchableOpacity style={[styles.adBtn, { backgroundColor: colors.purple, flexDirection: 'row', alignItems: 'center', gap: 6 }]} onPress={handleUnlock} activeOpacity={0.85}>
+        <HugeiconsIcon icon={PlayCircleIcon} size={16} color="#fff" />
         <Text style={[styles.adBtnText, { color: '#fff' }]}>Tümünü Göster</Text>
       </TouchableOpacity>
     </View>
@@ -147,9 +167,15 @@ function ScoreCard({ profile }) {
 // ─── CARD 2: Stalkers ─────────────────────────────────────────────────────────
 function StalkersCard({ stalkers }) {
   const { colors } = useTheme();
-  const [unlocked, setUnlocked] = useState(false);
+  const [unlocked, setUnlocked] = useState(unlockState.stalkers);
   const visible   = stalkers.slice(0, 1);
   const locked    = stalkers.slice(1);
+
+  const handleUnlockStalkers = useCallback((cb) => {
+    unlockState.stalkers = true;
+    setUnlocked(true);
+    cb?.();
+  }, []);
 
   return (
     <View style={styles.card}>
@@ -185,7 +211,7 @@ function StalkersCard({ stalkers }) {
       {!unlocked && stalkers.length > 0 && locked.length > 0 && (
         <View style={styles.lockedSection}>
           {locked.slice(0, 3).map((s, i) => <BlurredRow key={i} item={s} />)}
-          <LockOverlay onUnlock={() => setUnlocked(true)} count={locked.length} />
+          <LockOverlay onUnlock={() => handleUnlockStalkers()} count={locked.length} />
         </View>
       )}
 
@@ -208,9 +234,15 @@ function StalkersCard({ stalkers }) {
 // ─── CARD 3: Engagement Drop (eski "Muted") ───────────────────────────────────
 function MutedCard({ ghostFollowers }) {
   const { colors } = useTheme();
-  const [unlocked, setUnlocked] = useState(false);
+  const [unlocked, setUnlocked] = useState(unlockState.ghostFollowers);
   const visible = ghostFollowers.slice(0, 2);
   const locked  = ghostFollowers.slice(2);
+
+  const handleUnlockMuted = useCallback((cb) => {
+    unlockState.ghostFollowers = true;
+    setUnlocked(true);
+    cb?.();
+  }, []);
 
   return (
     <View style={styles.card}>
@@ -251,7 +283,7 @@ function MutedCard({ ghostFollowers }) {
           {!unlocked && locked.length > 0 && (
             <View style={styles.lockedSection}>
               {locked.slice(0, 3).map((g, i) => <BlurredRow key={i} item={g} />)}
-              <LockOverlay onUnlock={() => setUnlocked(true)} count={locked.length} />
+              <LockOverlay onUnlock={() => handleUnlockMuted()} count={locked.length} />
             </View>
           )}
           {unlocked && locked.map((g) => (
@@ -275,8 +307,14 @@ function MutedCard({ ghostFollowers }) {
 // ─── CARD 4: Unfollowers ──────────────────────────────────────────────────────
 function UnfollowersCard({ unfollowers }) {
   const { colors } = useTheme();
-  const [unlocked, setUnlocked] = useState(false);
+  const [unlocked, setUnlocked] = useState(unlockState.unfollowers);
   const mutual   = unfollowers.filter((u) => u.wasFollowedBack).length;
+
+  const handleUnlockUnfollowers = useCallback((cb) => {
+    unlockState.unfollowers = true;
+    setUnlocked(true);
+    cb?.();
+  }, []);
   const visible  = unfollowers.slice(0, 2);
   const locked   = unfollowers.slice(2);
 
@@ -319,7 +357,7 @@ function UnfollowersCard({ unfollowers }) {
       {!unlocked && locked.length > 0 && (
         <View style={styles.lockedSection}>
           {locked.slice(0, 3).map((u, i) => <BlurredRow key={i} item={u} />)}
-          <LockOverlay onUnlock={() => setUnlocked(true)} count={locked.length} />
+          <LockOverlay onUnlock={() => handleUnlockUnfollowers()} count={locked.length} />
         </View>
       )}
 
@@ -411,6 +449,12 @@ export default function ResultsScreen({ navigation }) {
           </ScrollView>
         ))}
       </ScrollView>
+
+      {/* Banner */}
+      <BannerAd
+        unitId={AD_UNIT_IDS.BANNER}
+        size={BannerAdSize.ANCHORED_ADAPTIVE_BANNER}
+      />
 
       {/* Next button */}
       <TouchableOpacity

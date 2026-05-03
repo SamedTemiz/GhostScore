@@ -10,9 +10,20 @@ import { useState, useRef, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { WebView } from 'react-native-webview';
 import CookieManager from '@react-native-cookies/cookies';
+import * as Device from 'expo-device';
 import { SPACING, RADIUS, SHADOWS, GLOSS } from '../constants/theme';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
+
+function buildChromeUA() {
+  const model   = Device.modelName || Device.deviceName || 'SM-A546B';
+  const release = Device.osVersion || '12';
+  return (
+    `Mozilla/5.0 (Linux; Android ${release}; ${model}) ` +
+    'AppleWebKit/537.36 (KHTML, like Gecko) ' +
+    'Chrome/124.0.6367.82 Mobile Safari/537.36'
+  );
+}
 
 const IG_COLOR     = '#C13584';
 const DEV_MODE_KEY = 'gs_dev_mode';
@@ -229,7 +240,7 @@ export default function LoginScreen({ navigation }) {
             sharedCookiesEnabled
             thirdPartyCookiesEnabled
             style={{ flex: 1 }}
-            userAgent="Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
+            userAgent={buildChromeUA()}
           />
         </SafeAreaView>
       </Modal>

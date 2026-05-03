@@ -1,32 +1,88 @@
-import { useState } from 'react';
-import { View, Text, FlatList, StyleSheet, TouchableOpacity, Image } from 'react-native';
+import { useState, useCallback, useRef } from 'react';
+import {
+  View, Text, ScrollView, StyleSheet, TouchableOpacity, Image,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
 import { HugeiconsIcon } from '@hugeicons/react-native';
-import { ArrowLeft02Icon, ViewIcon } from '@hugeicons/core-free-icons';
+import { ArrowLeft02Icon, ViewIcon, LockIcon, PlayCircleIcon } from '@hugeicons/core-free-icons';
+import { RewardedAd, RewardedAdEventType, AdEventType } from 'react-native-google-mobile-ads';
 import { SPACING, RADIUS } from '../constants/theme';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
+import { AD_UNIT_IDS } from '../constants/ads';
+import unlockState from '../state/unlockState';
 
-const GHOST = require('../../assets/main/Suspicious_Look.png');
+const VISIBLE_COUNT = 1;
 
-function StalkerRow({ item, index, colors }) {
+function UserRow({ item, index, colors }) {
   const [imgErr, setImgErr] = useState(false);
   return (
-    <View style={[styles.row, { borderBottomColor: colors.border }]}>
-      <Text style={[styles.rank, { color: colors.textMuted }]}>#{index + 1}</Text>
+    <View style={[styles.userRow, { borderBottomColor: colors.border }]}>
       {item.profilePic && !imgErr
         ? <Image source={{ uri: item.profilePic }} style={[styles.avatar, { backgroundColor: colors.cardPurple }]} onError={() => setImgErr(true)} />
         : <View style={[styles.avatar, { backgroundColor: colors.cardPurple }]} />
       }
-      <View style={styles.info}>
+      <View style={{ flex: 1 }}>
         <Text style={[styles.username, { color: colors.textPrimary }]}>@{item.username}</Text>
-        <Text style={[styles.subtitle, { color: colors.textMuted }]}>Takip etmiyor</Text>
+        <Text style={[styles.hint, { color: colors.textMuted }]}>Takip etmiyor</Text>
       </View>
-      <View style={[styles.badge, { backgroundColor: colors.cardPurple }]}>
-        <Text style={[styles.badgeValue, { color: colors.purple }]}>{item.viewedStories}</Text>
-        <Text style={[styles.badgeLabel, { color: colors.textMuted }]}>story</Text>
+      <View style={[styles.storyBadge, { backgroundColor: colors.purple + '20' }]}>
+        <Text style={[styles.storyCount, { color: colors.purple }]}>{item.viewedStories}</Text>
+        <Text style={[styles.storyLabel, { color: colors.textMuted }]}>story</Text>
       </View>
+    </View>
+  );
+}
+
+function BlurredRow({ item, colors }) {
+  const [imgErr, setImgErr] = useState(false);
+  return (
+    <View style={styles.blurRow}>
+      <View style={styles.blurAvatarWrap}>
+        {item?.profilePic && !imgErr
+          ? <Image source={{ uri: item.profilePic }} style={[styles.blurCircle, { backgroundColor: colors.border }]} onError={() => setImgErr(true)} />
+          : <View style={[styles.blurCircle, { backgroundColor: colors.border }]} />
+        }
+        <View style={[StyleSheet.absoluteFill, { borderRadius: 22, backgroundColor: colors.background + 'BB' }]} />
+      </View>
+      <View style={{ flex: 1, gap: 6 }}>
+        <View style={{ position: 'relative' }}>
+          <Text style={[styles.username, { color: colors.textPrimary, opacity: 0.15 }]}>
+            @{item?.username || 'kullanici'}
+          </Text>
+          <View style={[StyleSheet.absoluteFill, { borderRadius: 4, backgroundColor: colors.border }]} />
+        </View>
+        <View style={[styles.blurLine, { backgroundColor: colors.border }]} />
+      </View>
+    </View>
+  );
+}
+
+function LockOverlay({ onUnlock, count, colors }) {
+  const rewardedRef = useRef(null);
+
+  const handleUnlock = useCallback(() => {
+    const rewarded = RewardedAd.createForAdRequest(AD_UNIT_IDS.REWARDED);
+    rewardedRef.current = rewarded;
+    rewarded.addAdEventListener(RewardedAdEventType.EARNED_REWARD, onUnlock);
+    rewarded.addAdEventListener(AdEventType.ERROR, onUnlock);
+    rewarded.addAdEventListener(RewardedAdEventType.LOADED, () => rewarded.show());
+    rewarded.load();
+  }, [onUnlock]);
+
+  return (
+    <View style={[styles.lockOverlay, { backgroundColor: colors.background + 'CC' }]}>
+      <HugeiconsIcon icon={LockIcon} size={28} color={colors.purple} style={{ marginBottom: SPACING.xs }} />
+      <Text style={[styles.lockTitle, { color: colors.textPrimary }]}>{count} kişi daha gizli</Text>
+      <Text style={[styles.lockSub, { color: colors.textMuted }]}>Listenin tamamını görmek için devam et</Text>
+      <TouchableOpacity
+        style={[styles.adBtn, { backgroundColor: colors.purple, flexDirection: 'row', alignItems: 'center', gap: 6 }]}
+        onPress={handleUnlock}
+        activeOpacity={0.85}
+      >
+        <HugeiconsIcon icon={PlayCircleIcon} size={16} color="#fff" />
+        <Text style={styles.adBtnText}>Tümünü Göster</Text>
+      </TouchableOpacity>
     </View>
   );
 }
@@ -35,11 +91,19 @@ export default function StalkersScreen({ navigation }) {
   const { colors } = useTheme();
   const { data } = useAuth();
   const stalkers = data?.stalkers ?? [];
+  const [unlocked, setUnlocked] = useState(unlockState.stalkers);
+
+  const handleUnlock = useCallback(() => {
+    unlockState.stalkers = true;
+    setUnlocked(true);
+  }, []);
+
+  const visible = stalkers.slice(0, VISIBLE_COUNT);
+  const locked  = stalkers.slice(VISIBLE_COUNT);
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]}>
 
-      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
           <HugeiconsIcon icon={ArrowLeft02Icon} size={22} color={colors.textSecondary} />
@@ -50,59 +114,90 @@ export default function StalkersScreen({ navigation }) {
         </View>
       </View>
 
-      {/* Colored chart section */}
-      <View style={[styles.chartSection, { backgroundColor: colors.cardPurple, borderColor: colors.border }]}>
-        <View style={styles.chartLeft}>
-          <Text style={[styles.bigCount, { color: colors.purple }]}>{stalkers.length}</Text>
-          <Text style={[styles.bigCountLabel, { color: colors.textSecondary }]}>Stalker bulundu</Text>
-          <View style={[styles.pill, { backgroundColor: colors.purple + '22', flexDirection: 'row', alignItems: 'center', gap: 4 }]}>
-            <HugeiconsIcon icon={ViewIcon} size={14} color={colors.purple} />
-            <Text style={{ fontSize: 11, color: colors.purple, fontWeight: '600' }}>Story izleyici</Text>
-          </View>
-        </View>
-        <Image source={GHOST} style={styles.headerGhost} />
-      </View>
+      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
 
-      <FlatList
-        data={stalkers}
-        keyExtractor={(item) => item.id}
-        renderItem={({ item, index }) => <StalkerRow item={item} index={index} colors={colors} />}
-        contentContainerStyle={styles.list}
-        ListEmptyComponent={<Text style={[styles.empty, { color: colors.textMuted }]}>Henüz stalker yok 🎉</Text>}
-      />
+        <View style={[styles.badge2, { backgroundColor: colors.purple + '25' }]}>
+          <Text style={[styles.badgeText, { color: colors.purple }]}>STALKER LİSTESİ</Text>
+        </View>
+
+        <View style={styles.titleRow}>
+          <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>
+            {stalkers.length} Kişi{'\n'}Seni İzliyor
+          </Text>
+          <HugeiconsIcon icon={ViewIcon} size={42} color={colors.purple + '40'} />
+        </View>
+
+        {visible.map((s) => (
+          <UserRow key={s.id} item={s} colors={colors} />
+        ))}
+
+        {stalkers.length === 0 && (
+          <View style={[styles.emptyState, { backgroundColor: colors.cardPurple }]}>
+            <Text style={styles.emptyEmoji}>👻</Text>
+            <Text style={[styles.emptyTitle, { color: colors.purple }]}>Stalker yok!</Text>
+            <Text style={[styles.emptyText, { color: colors.textMuted }]}>Son storylerine bakan takipçisiz kimse görünmüyor.</Text>
+          </View>
+        )}
+
+        {!unlocked && locked.length > 0 && (
+          <View style={[styles.lockedSection, { minHeight: Math.min(locked.length, 3) * 68 + 140 }]}>
+            {locked.slice(0, 3).map((s, i) => (
+              <BlurredRow key={i} item={s} colors={colors} />
+            ))}
+            <LockOverlay onUnlock={handleUnlock} count={locked.length} colors={colors} />
+          </View>
+        )}
+
+        {unlocked && locked.map((s) => (
+          <UserRow key={s.id} item={s} colors={colors} />
+        ))}
+
+      </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1 },
+  safe:   { flex: 1 },
+  scroll: { padding: SPACING.lg, paddingBottom: SPACING.xxl },
 
   header:     { flexDirection: 'row', alignItems: 'center', padding: SPACING.lg, paddingBottom: SPACING.sm, gap: SPACING.md },
   backBtn:    { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
   titleMuted: { fontSize: 13 },
   titleBold:  { fontSize: 22, fontWeight: '800' },
 
-  chartSection: {
-    marginHorizontal: SPACING.lg, borderRadius: RADIUS.lg,
-    padding: SPACING.lg, marginBottom: SPACING.md,
-    flexDirection: 'row', alignItems: 'flex-end',
-    justifyContent: 'space-between', borderWidth: 1,
-  },
-  chartLeft:     {},
-  bigCount:      { fontSize: 48, fontWeight: '800', lineHeight: 52 },
-  bigCountLabel: { fontSize: 13, marginTop: 2, marginBottom: SPACING.sm },
-  pill:          { borderRadius: RADIUS.full, paddingHorizontal: SPACING.sm, paddingVertical: 4, alignSelf: 'flex-start' },
-  headerGhost: { width: 88, height: 88 },
+  badge2:    { alignSelf: 'flex-start', borderRadius: RADIUS.full, paddingHorizontal: SPACING.sm, paddingVertical: 4, marginBottom: SPACING.md },
+  badgeText: { fontSize: 11, fontWeight: '800', letterSpacing: 1.2 },
 
-  list: { paddingHorizontal: SPACING.lg, paddingTop: SPACING.sm },
-  row:  { flexDirection: 'row', alignItems: 'center', paddingVertical: SPACING.md, borderBottomWidth: 1 },
-  rank: { fontSize: 13, width: 28, fontWeight: '600' },
+  titleRow:  { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: SPACING.lg },
+  cardTitle: { fontSize: 32, fontWeight: '800', lineHeight: 38, flex: 1 },
+
+  userRow:    { flexDirection: 'row', alignItems: 'center', paddingVertical: SPACING.md, borderBottomWidth: 1 },
   avatar:     { width: 44, height: 44, borderRadius: RADIUS.full, marginRight: SPACING.md },
-  info:       { flex: 1 },
   username:   { fontSize: 14, fontWeight: '600' },
-  subtitle:   { fontSize: 12, marginTop: 2 },
-  badge:      { alignItems: 'center', borderRadius: RADIUS.sm, padding: SPACING.sm, minWidth: 48 },
-  badgeValue: { fontSize: 16, fontWeight: '800' },
-  badgeLabel: { fontSize: 10 },
-  empty:      { textAlign: 'center', marginTop: SPACING.xxl },
+  hint:       { fontSize: 12, marginTop: 2 },
+  storyBadge: { alignItems: 'center', borderRadius: RADIUS.sm, padding: SPACING.sm, minWidth: 50 },
+  storyCount: { fontSize: 16, fontWeight: '800' },
+  storyLabel: { fontSize: 10 },
+
+  blurRow:        { flexDirection: 'row', alignItems: 'center', paddingVertical: SPACING.md, gap: SPACING.md },
+  blurAvatarWrap: { position: 'relative', width: 44, height: 44 },
+  blurCircle:     { width: 44, height: 44, borderRadius: 22 },
+  blurLine:       { height: 12, width: '45%', borderRadius: 6 },
+
+  lockedSection: { marginTop: SPACING.xs, position: 'relative', overflow: 'hidden', borderRadius: RADIUS.md },
+  lockOverlay: {
+    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+    alignItems: 'center', justifyContent: 'center',
+    borderRadius: RADIUS.md, padding: SPACING.lg,
+  },
+  lockTitle: { fontSize: 16, fontWeight: '800', marginBottom: 4 },
+  lockSub:   { fontSize: 13, textAlign: 'center', marginBottom: SPACING.md },
+  adBtn:     { borderRadius: RADIUS.full, paddingHorizontal: SPACING.lg, paddingVertical: 10 },
+  adBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+
+  emptyState: { borderRadius: RADIUS.md, padding: SPACING.lg, alignItems: 'center', marginTop: SPACING.sm },
+  emptyEmoji: { fontSize: 36, marginBottom: SPACING.sm },
+  emptyTitle: { fontSize: 16, fontWeight: '800', marginBottom: 4 },
+  emptyText:  { fontSize: 13, textAlign: 'center', lineHeight: 20 },
 });

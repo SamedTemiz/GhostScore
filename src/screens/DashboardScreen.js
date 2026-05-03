@@ -1,8 +1,7 @@
 import { useRef, useEffect, useState } from 'react';
-import { View, Text, Image, ScrollView, StyleSheet, TouchableOpacity, Animated, Dimensions } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { View, Text, Image, ScrollView, StyleSheet, TouchableOpacity, Animated, Dimensions, Modal } from 'react-native';
 import { HugeiconsIcon } from '@hugeicons/react-native';
-import { ViewIcon, BadgeAlertIcon, UserMinus01Icon, UserCircleIcon, Settings01Icon } from '@hugeicons/core-free-icons';
+import { ViewIcon, BadgeAlertIcon, UserMinus01Icon, UserCircleIcon, Settings01Icon, InformationCircleIcon, Cancel01Icon } from '@hugeicons/core-free-icons';
 
 const SUSPICIOUS = require('../../assets/main/Suspicious_Look.png');
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -78,6 +77,80 @@ function ScoreRing({ score = 72, size = 120 }) {
   );
 }
 
+const SCORE_FACTORS = [
+  { label: 'Takipçi / Takip Oranı', max: 35, desc: 'Takipçi sayın takip ettiğin kişiden ne kadar fazlaysa o kadar yüksek.', color: '#9B7FD4' },
+  { label: 'Paylaşım Sayısı',        max: 25, desc: '50 ve üzeri post tam puan sağlar. Aktif içerik üretimi skoru artırır.',  color: '#4DBDBD' },
+  { label: 'Stalker Etkisi',         max: 20, desc: 'Story\'lerini takipçi olmadan izleyenler ne kadar fazlaysa o kadar yüksek.', color: '#C9A84C' },
+  { label: 'Etkileşim Kalitesi',     max: 20, desc: 'Hayalet takipçi oranın düşükse bu puan artar — aktif takipçi = iyi skor.', color: '#D4808A' },
+];
+
+function ScoreInfoSheet({ visible, onClose, score, colors }) {
+  const slideAnim = useRef(new Animated.Value(400)).current;
+
+  useEffect(() => {
+    if (visible) {
+      Animated.spring(slideAnim, { toValue: 0, useNativeDriver: true, tension: 65, friction: 10 }).start();
+    } else {
+      slideAnim.setValue(400);
+    }
+  }, [visible]);
+
+  const color = score >= 70 ? '#4DBDBD' : score >= 40 ? '#C9A84C' : '#D4808A';
+
+  return (
+    <Modal transparent visible={visible} animationType="none" statusBarTranslucent onRequestClose={onClose}>
+      <TouchableOpacity style={styles.sheetBackdrop} activeOpacity={1} onPress={onClose}>
+        <Animated.View
+          style={[styles.sheet, { backgroundColor: colors.surface, transform: [{ translateY: slideAnim }] }]}
+        >
+          <TouchableOpacity activeOpacity={1}>
+            {/* Handle */}
+            <View style={[styles.sheetHandle, { backgroundColor: colors.border }]} />
+
+            {/* Header */}
+            <View style={styles.sheetHeader}>
+              <View>
+                <Text style={[styles.sheetTitle, { color: colors.textPrimary }]}>Ghost Score Nasıl Hesaplanır?</Text>
+                <Text style={[styles.sheetSub, { color: colors.textMuted }]}>4 faktörün toplamı, maks 100 puan</Text>
+              </View>
+              <TouchableOpacity onPress={onClose} style={[styles.closeBtn, { backgroundColor: colors.background }]}>
+                <HugeiconsIcon icon={Cancel01Icon} size={18} color={colors.textMuted} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Score display */}
+            <View style={[styles.sheetScoreRow, { backgroundColor: color + '15', borderColor: color + '40', borderWidth: 1 }]}>
+              <Text style={[styles.sheetScoreBig, { color }]}>{score}</Text>
+              <View style={{ flex: 1, marginLeft: SPACING.md }}>
+                <Text style={[styles.sheetScoreLabel, { color: colors.textPrimary }]}>
+                  {score >= 70 ? 'Harika görünüyorsun! 🔥' : score >= 40 ? 'Gelişim alanın var 👻' : 'Sosyal etkinliğini artır! 💡'}
+                </Text>
+                <Text style={[styles.sheetScoreSub, { color: colors.textMuted }]}>
+                  {score >= 70 ? 'Profilini aktif ve etkili kullanıyorsun.' : 'Daha fazla paylaşım ve etkileşim skoru artırır.'}
+                </Text>
+              </View>
+            </View>
+
+            {/* Factors */}
+            {SCORE_FACTORS.map((f) => (
+              <View key={f.label} style={[styles.factorRow, { borderBottomColor: colors.border }]}>
+                <View style={[styles.factorDot, { backgroundColor: f.color }]} />
+                <View style={{ flex: 1 }}>
+                  <View style={styles.factorTopRow}>
+                    <Text style={[styles.factorLabel, { color: colors.textPrimary }]}>{f.label}</Text>
+                    <Text style={[styles.factorMax, { color: colors.textMuted }]}>maks {f.max} puan</Text>
+                  </View>
+                  <Text style={[styles.factorDesc, { color: colors.textMuted }]}>{f.desc}</Text>
+                </View>
+              </View>
+            ))}
+          </TouchableOpacity>
+        </Animated.View>
+      </TouchableOpacity>
+    </Modal>
+  );
+}
+
 function AnalyticsCard({ icon, title, count, subtitle, cardBg, accent, border, onPress }) {
   return (
     <TouchableOpacity activeOpacity={0.8} onPress={onPress}
@@ -113,7 +186,7 @@ export default function DashboardScreen({ navigation }) {
   const score     = profile?.ghostScore ?? 0;
   const picUri    = user?.profilePic || profile?.profilePic || '';
   const [picError, setPicError] = useState(false);
-  // Featured card stays dark as in the middle screen of the reference
+  const [scoreInfoVisible, setScoreInfoVisible] = useState(false);
   const featuredBg = colors.cardDark || '#5C4B5E';
 
   return (
@@ -155,7 +228,14 @@ export default function DashboardScreen({ navigation }) {
         <View style={[styles.scoreCard, { backgroundColor: featuredBg }, SHADOWS.glowPurple]}>
           {/* Card header row */}
           <View style={styles.scoreCardHeader}>
-            <Text style={styles.scoreCardTitle}>Ghost Score</Text>
+            <TouchableOpacity
+              onPress={() => setScoreInfoVisible(true)}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.scoreCardTitle}>Ghost Score</Text>
+              <HugeiconsIcon icon={InformationCircleIcon} size={15} color="rgba(255,255,255,0.4)" />
+            </TouchableOpacity>
             <View style={[
               styles.scorePill,
               { backgroundColor: score >= 70 ? '#4DBDBD22' : '#C9A84C22',
@@ -235,6 +315,13 @@ export default function DashboardScreen({ navigation }) {
             : 'Henüz analiz yapılmadı'}
         </Text>
       </ScrollView>
+
+      <ScoreInfoSheet
+        visible={scoreInfoVisible}
+        onClose={() => setScoreInfoVisible(false)}
+        score={score}
+        colors={colors}
+      />
     </SafeAreaView>
   );
 }
@@ -294,4 +381,23 @@ const styles = StyleSheet.create({
   unfollowerLeft: { flexDirection: 'row', alignItems: 'center' },
 
   footer: { fontSize: 11, textAlign: 'center' },
+
+  // ScoreInfoSheet
+  sheetBackdrop:  { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end' },
+  sheet:          { borderTopLeftRadius: RADIUS.xl, borderTopRightRadius: RADIUS.xl, padding: SPACING.lg, paddingBottom: SPACING.xxl },
+  sheetHandle:    { width: 36, height: 4, borderRadius: 2, alignSelf: 'center', marginBottom: SPACING.md },
+  sheetHeader:    { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: SPACING.lg },
+  sheetTitle:     { fontSize: 17, fontWeight: '800' },
+  sheetSub:       { fontSize: 12, marginTop: 3 },
+  closeBtn:       { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  sheetScoreRow:  { flexDirection: 'row', alignItems: 'center', borderRadius: RADIUS.md, padding: SPACING.md, marginBottom: SPACING.lg },
+  sheetScoreBig:  { fontSize: 40, fontWeight: '800', lineHeight: 44 },
+  sheetScoreLabel: { fontSize: 14, fontWeight: '700' },
+  sheetScoreSub:  { fontSize: 12, marginTop: 3 },
+  factorRow:      { flexDirection: 'row', alignItems: 'flex-start', gap: SPACING.sm, paddingVertical: SPACING.md, borderBottomWidth: 1 },
+  factorDot:      { width: 10, height: 10, borderRadius: 5, marginTop: 4 },
+  factorTopRow:   { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 },
+  factorLabel:    { fontSize: 14, fontWeight: '600' },
+  factorMax:      { fontSize: 12 },
+  factorDesc:     { fontSize: 12, lineHeight: 17 },
 });

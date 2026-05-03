@@ -32,8 +32,18 @@ class WebViewLoginRequest(BaseModel):
     following: list[WebViewUserItem] = []
 
 
+class DeviceInfo(BaseModel):
+    manufacturer: str = "samsung"
+    model: str = "SM-A546B"
+    android_version: int = 31
+    android_release: str = "12"
+    dpi: str = "420dpi"
+    resolution: str = "1080x2400"
+
+
 class SessionLoginRequest(BaseModel):
     session_id: str
+    device_info: DeviceInfo | None = None
 
 
 class TwoFactorRequest(BaseModel):

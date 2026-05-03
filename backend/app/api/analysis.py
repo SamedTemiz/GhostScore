@@ -5,7 +5,7 @@ GET  /analysis/latest - Son analizin sonuçlarını getir
 import json
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, HTTPException, Depends, status
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Depends, status
 import structlog
 
 from app.api.auth import get_current_user_id
@@ -35,14 +35,74 @@ def _decrypt_list(encrypted: str | None) -> list:
     return json.loads(raw)
 
 
+# ── Background: analiz çalıştır, DB'ye kaydet ────────────────
+
+async def _do_analysis_task(user_id: str, session_json: str, analysis_count: int):
+    """
+    run_analysis'ten sonra arka planda çalışır.
+    HTTP yanıtı zaten gönderildi; bu fonksiyon bloke edebilir.
+    """
+    db = get_supabase()
+    try:
+        cl = await login_with_session(session_json)
+    except Exception as e:
+        log.error("analysis_bg_login_failed", user_hash=safe_user_id(user_id), err=str(e)[:80])
+        db.table("users").update({"ig_session_encrypted": None}).eq("id", user_id).execute()
+        return
+    finally:
+        session_json = "0" * len(session_json)
+        del session_json
+
+    try:
+        data = await fetch_analysis_data(cl)
+    except Exception as e:
+        log.error("analysis_bg_fetch_failed", user_hash=safe_user_id(user_id), err=str(e)[:80])
+        return
+
+    profile         = data["profile"]
+    stalkers        = data["stalkers"]
+    ghost_followers = data["ghost_followers"]
+    unfollowers     = data["unfollowers"]
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    db.table("analyses").insert({
+        "user_id":            user_id,
+        "ghost_score":        profile["ghost_score"],
+        "followers_count":    profile["followers"],
+        "following_count":    profile["following"],
+        "posts_count":        profile["posts"],
+        "visibility_score":   profile["visibility_score"],
+        "stalkers_count":     len(stalkers),
+        "muted_count":        len(ghost_followers),
+        "unfollowers_count":  len(unfollowers),
+        "stalkers_encrypted":    _encrypt_list(stalkers),
+        "muted_encrypted":       _encrypt_list(ghost_followers),
+        "unfollowers_encrypted": _encrypt_list(unfollowers),
+    }).execute()
+
+    db.table("users").update({
+        "last_analysis_at": now_iso,
+        "analysis_count":   analysis_count + 1,
+        "ig_profile_pic":   profile.get("profile_pic", ""),
+        "ig_username":      profile.get("username", ""),
+    }).eq("id", user_id).execute()
+
+    db.table("audit_log").insert({
+        "user_id_hash": safe_user_id(user_id),
+        "action": "analysis",
+    }).execute()
+
+    log.info("analysis_bg_complete", user_hash=safe_user_id(user_id))
+
+
 # ── POST /analysis/run ────────────────────────────────────────
 
-@router.post("/run", response_model=AnalysisResponse, response_model_by_alias=True, status_code=200)
-async def run_analysis(user_id: str = Depends(get_current_user_id)):
+@router.post("/run", status_code=200)
+async def run_analysis(background_tasks: BackgroundTasks, user_id: str = Depends(get_current_user_id)):
     """
-    Günde 1 analiz hakkı. Rate limit DB'de kontrol edilir.
-    Instagram session şifreli olarak saklanır — hiçbir zaman plain text dışarı çıkmaz.
-    INSTAGRAM_MOCK=true ise gerçek Instagram çağrısı yapılmaz, mock veri döner.
+    Analizi arka planda başlatır ve hemen {"status":"queued"} döner.
+    Frontend GET /analysis/latest'i polling ile izler.
+    INSTAGRAM_MOCK=true ise mock veriyi doğrudan döner (polling gerekmez).
     """
     db = get_supabase()
 
@@ -61,7 +121,7 @@ async def run_analysis(user_id: str = Depends(get_current_user_id)):
             unfollowers=[UnfollowerItem(**u) for u in unfollowers],
             analysis_id="mock-id",
             created_at=datetime.now(timezone.utc).isoformat(),
-        )
+        ).model_dump(by_alias=True)
 
     # Kullanıcıyı çek
     user_row = (
@@ -96,7 +156,7 @@ async def run_analysis(user_id: str = Depends(get_current_user_id)):
                 detail=f"Bugünkü analizini zaten yaptın. {time_str} sonra tekrar analiz edebilirsin.",
             )
 
-    # Session çöz ve Instagram'a bağlan
+    # Session çöz
     if not user.get("ig_session_encrypted"):
         raise HTTPException(status_code=401, detail="Instagram oturumu bulunamadı. Yeniden giriş yap.")
 
@@ -105,79 +165,11 @@ async def run_analysis(user_id: str = Depends(get_current_user_id)):
     except Exception:
         raise HTTPException(status_code=401, detail="Oturum geçersiz. Yeniden giriş yap.")
 
-    try:
-        cl = await login_with_session(session_json)
-    except ValueError as e:
-        # Session süresi dolmuş — DB'den sil
-        db.table("users").update({"ig_session_encrypted": None}).eq("id", user_id).execute()
-        raise HTTPException(status_code=401, detail=str(e))
-    except RuntimeError as e:
-        raise HTTPException(status_code=503, detail=str(e))
-    finally:
-        session_json = "0" * len(session_json)  # temizle
-        del session_json
+    analysis_count = user.get("analysis_count") or 0
+    background_tasks.add_task(_do_analysis_task, user_id, session_json, analysis_count)
 
-    # Analiz verilerini çek
-    try:
-        data = await fetch_analysis_data(cl)
-    except ValueError as e:
-        raise HTTPException(status_code=401, detail=str(e))
-    except RuntimeError as e:
-        raise HTTPException(status_code=503, detail=str(e))
-
-    profile = data["profile"]
-    stalkers        = data["stalkers"]
-    ghost_followers = data["ghost_followers"]
-    unfollowers     = data["unfollowers"]
-
-    # Sonuçları şifreli olarak DB'ye kaydet
-    now_iso = datetime.now(timezone.utc).isoformat()
-    analysis_row = (
-        db.table("analyses")
-        .insert({
-            "user_id": user_id,
-            "ghost_score": profile["ghost_score"],
-            "followers_count": profile["followers"],
-            "following_count": profile["following"],
-            "posts_count": profile["posts"],
-            "visibility_score": profile["visibility_score"],
-            "stalkers_count":     len(stalkers),
-            "muted_count":        len(ghost_followers),
-            "unfollowers_count":  len(unfollowers),
-            "stalkers_encrypted":    _encrypt_list(stalkers),
-            "muted_encrypted":       _encrypt_list(ghost_followers),
-            "unfollowers_encrypted": _encrypt_list(unfollowers),
-        })
-        .execute()
-    )
-
-    analysis_id = analysis_row.data[0]["id"]
-    created_at = analysis_row.data[0]["created_at"]
-
-    # Kullanıcı son analiz zamanını ve profil bilgilerini güncelle
-    db.table("users").update({
-        "last_analysis_at": now_iso,
-        "analysis_count": (user.get("analysis_count") or 0) + 1,
-        "ig_profile_pic": profile.get("profile_pic", ""),
-        "ig_username": profile.get("username", ""),
-    }).eq("id", user_id).execute()
-
-    # Audit log
-    db.table("audit_log").insert({
-        "user_id_hash": safe_user_id(user_id),
-        "action": "analysis",
-    }).execute()
-
-    log.info("analysis_complete", user_hash=safe_user_id(user_id))
-
-    return AnalysisResponse(
-        profile=ProfileData(**profile),
-        stalkers=[StalkerItem(**s) for s in stalkers],
-        ghost_followers=[GhostFollowerItem(**g) for g in ghost_followers],
-        unfollowers=[UnfollowerItem(**u) for u in unfollowers],
-        analysis_id=analysis_id,
-        created_at=created_at,
-    )
+    log.info("analysis_queued", user_hash=safe_user_id(user_id))
+    return {"status": "queued"}
 
 
 # ── GET /analysis/latest ──────────────────────────────────────

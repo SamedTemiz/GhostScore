@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, Animated, StatusBar, TouchableOpacity, Dimensions, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { InterstitialAd, AdEventType } from 'react-native-google-mobile-ads';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import { SPACING, RADIUS } from '../constants/theme';
+import { AD_UNIT_IDS } from '../constants/ads';
 
 const { width, height } = Dimensions.get('window');
 
@@ -34,7 +36,7 @@ const MESSAGES = [
 
 const MIN_DURATION = 12000; // 12 saniye
 const MSG_INTERVAL = 2500;
-const TIMEOUT_MS   = 60000; // 60s sonra hata ekranı
+const TIMEOUT_MS   = 120000; // 120s sonra hata ekranı
 
 // ── Arka plan ghost bileşeni ───────────────────────────────────
 function BackgroundGhost({ delay = 0 }) {
@@ -90,10 +92,13 @@ function BackgroundGhost({ delay = 0 }) {
 
 export default function AnalysisScreen({ navigation, route }) {
   const { colors } = useTheme();
-  const { user, data, analysisError, loginWithSession } = useAuth();
+  const { user, data, analysisError, loginWithSession, refreshData } = useAuth();
   const [msgIndex, setMsgIndex] = useState(0);
   const [minDone, setMinDone]   = useState(false);
   const [timedOut, setTimedOut] = useState(false);
+  const [reanalysisError, setReanalysisError] = useState(null);
+  // reanalysis modunda data değişimini izlemek için ref — ilk mount'taki data'yı yoksay
+  const prevDataRef = useRef(data);
 
   const fadeAnim     = useRef(new Animated.Value(1)).current;
   const scaleAnim    = useRef(new Animated.Value(1)).current;
@@ -101,25 +106,11 @@ export default function AnalysisScreen({ navigation, route }) {
   const floatAnim    = useRef(new Animated.Value(0)).current;
   const timeoutRef   = useRef(null);
 
-  // Progress bar: MIN_DURATION'a kadar dolar, sonra data gelene kadar pulse yapar
+  // Progress bar: MIN_DURATION'a kadar %85'e dolar, sonra data gelene kadar bekler
   useEffect(() => {
-    const runProgress = () => {
-      progressAnim.setValue(0);
-      Animated.timing(progressAnim, {
-        toValue: 0.85, duration: MIN_DURATION, useNativeDriver: false,
-      }).start(({ finished }) => {
-        if (!finished) return;
-        // 85'te durdu, pulse yap (0.75-0.85 arası gidip gel)
-        const pulse = Animated.loop(
-          Animated.sequence([
-            Animated.timing(progressAnim, { toValue: 0.75, duration: 800, useNativeDriver: false }),
-            Animated.timing(progressAnim, { toValue: 0.85, duration: 800, useNativeDriver: false }),
-          ])
-        );
-        pulse.start();
-      });
-    };
-    runProgress();
+    Animated.timing(progressAnim, {
+      toValue: 0.85, duration: MIN_DURATION, useNativeDriver: false,
+    }).start();
     const t = setTimeout(() => setMinDone(true), MIN_DURATION);
     return () => clearTimeout(t);
   }, []);
@@ -155,8 +146,9 @@ export default function AnalysisScreen({ navigation, route }) {
   }, []);
 
   const params = navigation.getState().routes.find(r => r.name === 'Analysis')?.params ?? {};
-  const isSimulation = params.simulation;
-  const sessionId    = params.sessionId;
+  const isSimulation  = params.simulation;
+  const sessionId     = params.sessionId;
+  const isReanalysis  = params.reanalysis === true;
 
   // sessionId ile backend login çağrısı
   useEffect(() => {
@@ -164,22 +156,53 @@ export default function AnalysisScreen({ navigation, route }) {
     loginWithSession(sessionId).catch(() => {});
   }, [sessionId]);
 
-  // Başarılı → Results'a geç
+  // Yeniden analiz modu: refreshData() çağır
   useEffect(() => {
-    if ((data || isSimulation) && minDone) {
+    if (!isReanalysis) return;
+    refreshData().catch((err) => {
       clearTimeout(timeoutRef.current);
-      // Progress bar'ı %100'e tamamla
+      setReanalysisError(err.message || 'Analiz başarısız oldu. Lütfen tekrar dene.');
+    });
+  }, [isReanalysis]);
+
+  // Başarılı → Interstitial göster → Results'a geç
+  useEffect(() => {
+    // Reanalysis modunda: data öncekinden farklılaşınca tetikle (mount'taki data değil)
+    const dataReady = isReanalysis
+      ? (data && data !== prevDataRef.current)
+      : (data || isSimulation);
+
+    if (dataReady && minDone && !timedOut) {
+      clearTimeout(timeoutRef.current);
       Animated.timing(progressAnim, { toValue: 1, duration: 400, useNativeDriver: false }).start();
-      const t = setTimeout(() => {
+
+      const goToResults = () => {
         navigation.reset({ index: 0, routes: [{ name: 'Results' }] });
+      };
+
+      const interstitial = InterstitialAd.createForAdRequest(AD_UNIT_IDS.INTERSTITIAL);
+      const unsubClosed = interstitial.addAdEventListener(AdEventType.CLOSED, goToResults);
+      const unsubError  = interstitial.addAdEventListener(AdEventType.ERROR, goToResults);
+      const unsubLoaded = interstitial.addAdEventListener(AdEventType.LOADED, () => {
+        interstitial.show();
+      });
+
+      const t = setTimeout(() => {
+        interstitial.load();
       }, 600);
-      return () => clearTimeout(t);
+
+      return () => {
+        clearTimeout(t);
+        unsubClosed();
+        unsubError();
+        unsubLoaded();
+      };
     }
-  }, [data, minDone, isSimulation]);
+  }, [data, minDone, isSimulation, isReanalysis]);
 
   const msg = MESSAGES[msgIndex];
-  const hasError = analysisError || timedOut;
-  const errorMsg = analysisError || 'Analiz zaman aşımına uğradı. Lütfen tekrar dene.';
+  const hasError = (isReanalysis ? reanalysisError : analysisError) || timedOut;
+  const errorMsg = (isReanalysis ? reanalysisError : analysisError) || 'Analiz zaman aşımına uğradı. Lütfen tekrar dene.';
 
   const progressWidth = progressAnim.interpolate({
     inputRange: [0, 1],
@@ -196,10 +219,13 @@ export default function AnalysisScreen({ navigation, route }) {
           <Text style={[styles.errorMsg, { color: colors.textMuted }]}>{errorMsg}</Text>
           <TouchableOpacity
             style={[styles.retryBtn, { backgroundColor: colors.purple }]}
-            onPress={() => navigation.replace('Login')}
+            onPress={() => isReanalysis
+              ? navigation.reset({ index: 0, routes: [{ name: 'Main' }] })
+              : navigation.replace('Login')
+            }
             activeOpacity={0.85}
           >
-            <Text style={styles.retryBtnText}>Geri Dön</Text>
+            <Text style={styles.retryBtnText}>{isReanalysis ? 'Dashboard\'a Dön' : 'Geri Dön'}</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>

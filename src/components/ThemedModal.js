@@ -135,12 +135,13 @@ const styles = StyleSheet.create({
   btnRowDouble: { flexDirection: 'row', gap: SPACING.sm },
   btn: {
     flex: 1, borderRadius: RADIUS.full,
-    paddingVertical: SPACING.md,
+    paddingVertical: 14,
+    minHeight: 48,
     alignItems: 'center', justifyContent: 'center',
   },
   btnCancel:      { borderWidth: 1 },
   btnCancelText:  { fontSize: 15, fontWeight: '600' },
   btnConfirm:     {},
   btnConfirmHalf: {},
-  btnConfirmText: { fontSize: 15, fontWeight: '700', color: '#FFF' },
+  btnConfirmText: { fontSize: 15, fontWeight: '700', color: '#FFFFFF', includeFontPadding: false },
 });

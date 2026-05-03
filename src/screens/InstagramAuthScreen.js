@@ -5,10 +5,10 @@ import {
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
 import { HugeiconsIcon } from '@hugeicons/react-native';
 import { ArrowLeft02Icon, ArrowRight01Icon, LockIcon, Refresh01Icon, InstagramIcon, UserGroupIcon, ViewIcon, CheckmarkCircle01Icon, ShieldKeyIcon } from '@hugeicons/core-free-icons';
 import CookieManager from '@react-native-cookies/cookies';
+import * as Device from 'expo-device';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { SPACING, RADIUS, SHADOWS, GLOSS } from '../constants/theme';
@@ -19,10 +19,16 @@ const IG_LOGIN_URL  = 'https://www.instagram.com/accounts/login/';
 const IG_COLOR      = '#E1306C';
 const IG_GRADIENT   = '#833AB4';
 
-const CHROME_MOBILE_UA =
-  'Mozilla/5.0 (Linux; Android 13; Pixel 7) ' +
-  'AppleWebKit/537.36 (KHTML, like Gecko) ' +
-  'Chrome/120.0.6099.210 Mobile Safari/537.36';
+// expo-device: Platform.constants'tan daha güvenilir, native modülle doğrudan bağlantı kurar
+function buildChromeUA() {
+  const model   = Device.modelName  || Device.deviceName  || 'SM-A546B';
+  const release = Device.osVersion  || '12';
+  return (
+    `Mozilla/5.0 (Linux; Android ${release}; ${model}) ` +
+    'AppleWebKit/537.36 (KHTML, like Gecko) ' +
+    'Chrome/124.0.6367.82 Mobile Safari/537.36'
+  );
+}
 
 const ANTI_DETECTION_JS = `
   (function() {
@@ -234,7 +240,10 @@ export default function InstagramAuthScreen({ navigation }) {
           {/* CTA */}
           <TouchableOpacity
             style={[styles.ctaBtn, { backgroundColor: colors.gold }, SHADOWS.glowGold, GLOSS]}
-            onPress={() => setStatus('webview')}
+            onPress={async () => {
+              try { await CookieManager.clearAll(true); } catch {}
+              setStatus('webview');
+            }}
             activeOpacity={0.88}
           >
             <HugeiconsIcon icon={InstagramIcon} size={18} color="#1A1200" />
@@ -256,6 +265,7 @@ export default function InstagramAuthScreen({ navigation }) {
 
   // ── WEBVIEW ────────────────────────────────────────────────────
   if (status === 'webview') {
+    const chromeUA = buildChromeUA();
     return (
       <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]}>
         <StatusBar barStyle="light-content" />
@@ -289,7 +299,7 @@ export default function InstagramAuthScreen({ navigation }) {
         <WebView
           key={webviewKey}
           source={{ uri: IG_LOGIN_URL }}
-          userAgent={CHROME_MOBILE_UA}
+          userAgent={chromeUA}
           injectedJavaScriptBeforeContentLoaded={ANTI_DETECTION_JS}
           javaScriptEnabled
           domStorageEnabled

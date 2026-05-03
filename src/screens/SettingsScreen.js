@@ -1,15 +1,16 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState } from 'react';
 import { View, Text, Image, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import Constants from 'expo-constants';
 import { HugeiconsIcon } from '@hugeicons/react-native';
-import { Settings01Icon, Refresh01Icon, ShieldKeyIcon, Logout02Icon, AlertSquareIcon, ArrowLeft02Icon, UserCircleIcon, ArrowRight01Icon } from '@hugeicons/core-free-icons';
+import { Refresh01Icon, ShieldKeyIcon, Logout02Icon, AlertSquareIcon, ArrowLeft02Icon, UserCircleIcon, ArrowRight01Icon, Delete02Icon } from '@hugeicons/core-free-icons';
 
-const REFRESH_COOLDOWN_MS = 2 * 60 * 1000; // 2 dakika
-const LAST_REFRESH_KEY = 'gs_last_refresh_at';
+const APP_VERSION = Constants.expoConfig?.version ?? '1.0.0';
+
 import { SPACING, RADIUS } from '../constants/theme';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
+import { usersApi } from '../services/api';
 import ThemedModal from '../components/ThemedModal';
 
 function SettingRow({ icon, label, subtitle, right, onPress, colors, danger }) {
@@ -44,72 +45,45 @@ function formatDate(iso) {
 
 export default function SettingsScreen({ navigation }) {
   const { colors } = useTheme();
-  const { user, data, logout, refreshData } = useAuth();
-  const [refreshing, setRefreshing] = useState(false);
+  const { user, data, logout } = useAuth();
   const [picError, setPicError] = useState(false);
-  const [cooldownSec, setCooldownSec] = useState(0);
-  const timerRef = useRef(null);
+  const [deletingAccount, setDeletingAccount] = useState(false);
   const picUri = user?.profilePic || '';
 
-  // Modal state
   const [modal, setModal] = useState({ visible: false, type: 'info', title: '', message: '' });
   const [logoutConfirm, setLogoutConfirm] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState(false);
+  const [reanalysisConfirm, setReanalysisConfirm] = useState(false);
 
   const lastUpdate = data?.createdAt ? formatDate(data.createdAt) : 'Henüz analiz yok';
 
-  // Cooldown geri sayımını başlat
-  const startCooldown = (remainingMs) => {
-    if (timerRef.current) clearInterval(timerRef.current);
-    setCooldownSec(Math.ceil(remainingMs / 1000));
-    timerRef.current = setInterval(() => {
-      setCooldownSec(prev => {
-        if (prev <= 1) { clearInterval(timerRef.current); return 0; }
-        return prev - 1;
-      });
-    }, 1000);
+  const handleModalConfirm = () => {
+    setModal(m => ({ ...m, visible: false }));
   };
 
-  // Ekran açılınca kalan cooldown varsa geri sayım yap
-  useEffect(() => {
-    AsyncStorage.getItem(LAST_REFRESH_KEY).then(val => {
-      if (!val) return;
-      const elapsed = Date.now() - parseInt(val, 10);
-      const remaining = REFRESH_COOLDOWN_MS - elapsed;
-      if (remaining > 0) startCooldown(remaining);
-    });
-    return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, []);
-
-  const handleRefresh = async () => {
-    if (cooldownSec > 0 || refreshing) return;
-    setRefreshing(true);
-    try {
-      await refreshData();
-      const now = Date.now();
-      await AsyncStorage.setItem(LAST_REFRESH_KEY, String(now));
-      startCooldown(REFRESH_COOLDOWN_MS);
-      setModal({
-        visible: true,
-        type: 'success',
-        title: 'Güncellendi',
-        message: 'Veriler başarıyla yenilendi.',
-      });
-    } catch (err) {
-      setModal({
-        visible: true,
-        type: 'error',
-        title: 'Güncelleme Başarısız',
-        message: err.message || 'Veriler güncellenemedi. Lütfen tekrar dene.',
-      });
-    } finally {
-      setRefreshing(false);
-    }
+  const handleReanalysisConfirmed = () => {
+    setReanalysisConfirm(false);
+    navigation.navigate('Analysis', { reanalysis: true });
   };
 
   const handleLogoutConfirmed = async () => {
     setLogoutConfirm(false);
     await logout();
     navigation.reset({ index: 0, routes: [{ name: 'Login' }] });
+  };
+
+  const handleDeleteConfirmed = async () => {
+    setDeleteConfirm(false);
+    setDeletingAccount(true);
+    try {
+      await usersApi.deleteAccount();
+      await logout();
+      navigation.reset({ index: 0, routes: [{ name: 'Login' }] });
+    } catch (err) {
+      setModal({ visible: true, type: 'error', title: 'Hata', message: err.message || 'Hesap silinemedi. Lütfen tekrar dene.' });
+    } finally {
+      setDeletingAccount(false);
+    }
   };
 
   return (
@@ -148,21 +122,11 @@ export default function SettingsScreen({ navigation }) {
         <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <SettingRow
             icon={Refresh01Icon}
-            label="Verileri Yenile"
-            subtitle={
-              refreshing ? 'Güncelleniyor...' :
-              cooldownSec > 0 ? `${cooldownSec} saniye sonra tekrar yenileyebilirsin` :
-              `Son güncelleme: ${lastUpdate}`
-            }
+            label="Analizi Yenile"
+            subtitle={`Son analiz: ${lastUpdate}`}
             colors={colors}
-            onPress={refreshing || cooldownSec > 0 ? null : handleRefresh}
-            right={
-              refreshing
-                ? <ActivityIndicator size="small" color={colors.purple} />
-                : cooldownSec > 0
-                ? <Text style={{ fontSize: 12, color: colors.textMuted, fontWeight: '600' }}>{cooldownSec}s</Text>
-                : <HugeiconsIcon icon={ArrowRight01Icon} size={18} color={colors.textMuted} />
-            }
+            onPress={() => setReanalysisConfirm(true)}
+            right={<HugeiconsIcon icon={ArrowRight01Icon} size={18} color={colors.textMuted} />}
           />
           <SettingRow
             icon={ShieldKeyIcon}
@@ -180,6 +144,19 @@ export default function SettingsScreen({ navigation }) {
             onPress={() => setLogoutConfirm(true)}
             right={<HugeiconsIcon icon={ArrowRight01Icon} size={18} color={colors.danger} />}
           />
+          <SettingRow
+            icon={Delete02Icon}
+            label="Hesabı Sil"
+            subtitle="Tüm verilerini kalıcı olarak sil"
+            colors={colors}
+            danger
+            onPress={deletingAccount ? null : () => setDeleteConfirm(true)}
+            right={
+              deletingAccount
+                ? <ActivityIndicator size="small" color={colors.danger} />
+                : <HugeiconsIcon icon={ArrowRight01Icon} size={18} color={colors.danger} />
+            }
+          />
         </View>
 
         {/* Hakkında */}
@@ -188,7 +165,7 @@ export default function SettingsScreen({ navigation }) {
           <SettingRow
             icon={AlertSquareIcon}
             label="Uygulama Hakkında"
-            subtitle="GhostScore v1.0.0"
+            subtitle={`GhostScore v${APP_VERSION}`}
             colors={colors}
             right={<Text style={{ fontSize: 12, color: colors.textMuted }}>Beta</Text>}
           />
@@ -200,14 +177,13 @@ export default function SettingsScreen({ navigation }) {
 
       </ScrollView>
 
-      {/* Themed modals */}
       <ThemedModal
         visible={modal.visible}
         type={modal.type}
         title={modal.title}
         message={modal.message}
         confirmText="Tamam"
-        onConfirm={() => setModal(m => ({ ...m, visible: false }))}
+        onConfirm={handleModalConfirm}
       />
 
       <ThemedModal
@@ -219,6 +195,28 @@ export default function SettingsScreen({ navigation }) {
         cancelText="İptal"
         onConfirm={handleLogoutConfirmed}
         onCancel={() => setLogoutConfirm(false)}
+      />
+
+      <ThemedModal
+        visible={deleteConfirm}
+        type="confirm"
+        title="Hesabı Sil"
+        message="Tüm verilerini kalıcı olarak silmek istediğine emin misin? Bu işlem geri alınamaz."
+        confirmText="Evet, Sil"
+        cancelText="İptal"
+        onConfirm={handleDeleteConfirmed}
+        onCancel={() => setDeleteConfirm(false)}
+      />
+
+      <ThemedModal
+        visible={reanalysisConfirm}
+        type="confirm"
+        title="Analizi Yenile"
+        message="Instagram hesabın sıfırdan analiz edilecek. Bu işlem birkaç dakika sürebilir. Devam etmek istiyor musun?"
+        confirmText="Analizi Başlat"
+        cancelText="İptal"
+        onConfirm={handleReanalysisConfirmed}
+        onCancel={() => setReanalysisConfirm(false)}
       />
     </SafeAreaView>
   );

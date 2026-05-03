@@ -10,7 +10,7 @@ import hashlib
 import json
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, HTTPException, Request, Depends, status
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, Depends, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 import structlog
@@ -35,8 +35,6 @@ from app.models.schemas import (
     SessionLoginRequest,
     AnalysisResponse,
     ProfileData,
-    StalkerItem,
-    GhostFollowerItem,
     UnfollowerItem,
 )
 
@@ -71,33 +69,69 @@ async def get_current_user_id(
     return user_id
 
 
+# ── Background: analiz çalıştır, DB'ye kaydet ────────────────
+
+async def _do_session_analysis(user_id: str, cl, analysis_count: int):
+    """
+    session_login'den sonra arka planda çalışır.
+    fetch_analysis_data (~40-55s) burada bloke eder — HTTP yanıtı zaten gönderildi.
+    """
+    db = get_supabase()
+    try:
+        data = await fetch_analysis_data(cl)
+    except Exception as e:
+        log.error("session_bg_analysis_failed", user_hash=safe_user_id(user_id), err=str(e)[:80])
+        return
+
+    profile         = data["profile"]
+    stalkers        = data["stalkers"]
+    ghost_followers = data["ghost_followers"]
+    unfollowers     = data["unfollowers"]
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    db.table("analyses").insert({
+        "user_id":            user_id,
+        "ghost_score":        profile["ghost_score"],
+        "followers_count":    profile["followers"],
+        "following_count":    profile["following"],
+        "posts_count":        profile["posts"],
+        "visibility_score":   profile["visibility_score"],
+        "stalkers_count":     len(stalkers),
+        "muted_count":        len(ghost_followers),
+        "unfollowers_count":  len(unfollowers),
+        "stalkers_encrypted":    encrypt_instagram_session(json.dumps(stalkers)),
+        "muted_encrypted":       encrypt_instagram_session(json.dumps(ghost_followers)),
+        "unfollowers_encrypted": encrypt_instagram_session(json.dumps(unfollowers)),
+    }).execute()
+
+    db.table("users").update({
+        "last_analysis_at": now_iso,
+        "analysis_count":   analysis_count + 1,
+        "ig_profile_pic":   profile.get("profile_pic", ""),
+        "ig_username":      profile.get("username", ""),
+    }).eq("id", user_id).execute()
+
+    log.info("session_bg_analysis_complete", user_hash=safe_user_id(user_id))
+
+
 # ── POST /auth/session-login ─────────────────────────────────
 
-@router.post("/session-login", response_model=WebViewLoginResponse, response_model_by_alias=True, status_code=200)
-async def session_login(request: Request, body: SessionLoginRequest):
+@router.post("/session-login", response_model=TokenResponse, status_code=200)
+async def session_login(request: Request, body: SessionLoginRequest, background_tasks: BackgroundTasks):
     """
-    WebView'dan alınan sessionid cookie ile giriş.
-    Şifre hiç alınmaz. instagrapi ile full analiz yapılır.
+    WebView'dan alınan sessionid cookie ile hızlı giriş.
+    JWT hemen döner; ağır analiz arka planda çalışır.
+    Frontend polling ile GET /analysis/latest'i izler.
     """
     client_ip = request.client.host if request.client else "unknown"
     log.info("session_login_attempt", ip_hash=_hash_ip(client_ip))
 
     try:
-        cl = await login_with_sessionid(body.session_id)
+        cl = await login_with_sessionid(body.session_id, device_info=body.device_info)
     except (ValueError, RuntimeError) as e:
         raise HTTPException(status_code=401, detail=str(e))
 
-    try:
-        data = await fetch_analysis_data(cl)
-    except (ValueError, RuntimeError) as e:
-        raise HTTPException(status_code=503, detail=str(e))
-
-    profile    = data["profile"]
-    stalkers   = data["stalkers"]
-    ghost_followers = data["ghost_followers"]
-    unfollowers = data["unfollowers"]
-    username   = profile["username"]
-
+    username          = (cl.username or "").strip()
     session_data      = cl.get_settings()
     encrypted_session = encrypt_instagram_session(json.dumps(session_data))
 
@@ -111,7 +145,8 @@ async def session_login(request: Request, body: SessionLoginRequest):
     )
 
     if existing.data:
-        user_id = existing.data[0]["id"]
+        user_id        = existing.data[0]["id"]
+        analysis_count = existing.data[0].get("analysis_count") or 0
         db.table("users").update({"ig_session_encrypted": encrypted_session}).eq("id", user_id).execute()
     else:
         new_user = (
@@ -119,35 +154,8 @@ async def session_login(request: Request, body: SessionLoginRequest):
             .insert({"ig_username": username, "ig_session_encrypted": encrypted_session})
             .execute()
         )
-        user_id = new_user.data[0]["id"]
-
-    now_iso      = datetime.now(timezone.utc).isoformat()
-    analysis_row = (
-        db.table("analyses")
-        .insert({
-            "user_id": user_id,
-            "ghost_score":        profile["ghost_score"],
-            "followers_count":    profile["followers"],
-            "following_count":    profile["following"],
-            "posts_count":        profile["posts"],
-            "visibility_score":   profile["visibility_score"],
-            "stalkers_count":     len(stalkers),
-            "muted_count":        len(ghost_followers),
-            "unfollowers_count":  len(unfollowers),
-            "stalkers_encrypted":    encrypt_instagram_session(json.dumps(stalkers)),
-            "muted_encrypted":       encrypt_instagram_session(json.dumps(ghost_followers)),
-            "unfollowers_encrypted": encrypt_instagram_session(json.dumps(unfollowers)),
-        })
-        .execute()
-    )
-
-    analysis_id = analysis_row.data[0]["id"]
-    created_at  = analysis_row.data[0]["created_at"]
-
-    db.table("users").update({
-        "last_analysis_at": now_iso,
-        "analysis_count": (existing.data[0].get("analysis_count") or 0) + 1 if existing.data else 1,
-    }).eq("id", user_id).execute()
+        user_id        = new_user.data[0]["id"]
+        analysis_count = 0
 
     db.table("audit_log").insert({
         "user_id_hash": safe_user_id(user_id),
@@ -155,19 +163,13 @@ async def session_login(request: Request, body: SessionLoginRequest):
         "ip_hash": _hash_ip(client_ip),
     }).execute()
 
-    log.info("session_login_success", user_hash=safe_user_id(user_id))
+    background_tasks.add_task(_do_session_analysis, user_id, cl, analysis_count)
 
-    return WebViewLoginResponse(
+    log.info("session_login_fast_ok", user_hash=safe_user_id(user_id))
+
+    return TokenResponse(
         access_token=create_access_token(user_id),
         refresh_token=create_refresh_token(user_id),
-        analysis=AnalysisResponse(
-            profile=ProfileData(**profile),
-            stalkers=[StalkerItem(**s) for s in stalkers],
-            ghost_followers=[GhostFollowerItem(**g) for g in ghost_followers],
-            unfollowers=[UnfollowerItem(**u) for u in unfollowers],
-            analysis_id=analysis_id,
-            created_at=created_at,
-        ),
     )
 
 

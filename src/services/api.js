@@ -68,16 +68,24 @@ async function request(path, options = {}, retry = true) {
     ...options.headers,
   };
 
+  const controller = new AbortController();
+  const timeoutId  = setTimeout(() => controller.abort(), 120000);
+
   let res;
   try {
-    res = await fetch(`${BASE_URL}${path}`, { ...options, headers });
+    res = await fetch(`${BASE_URL}${path}`, { ...options, headers, signal: controller.signal });
   } catch (networkErr) {
+    clearTimeout(timeoutId);
+    const isTimeout = networkErr.name === 'AbortError';
     const err = new Error(
-      'Bağlantı hatası. Lütfen internet bağlantını kontrol edip tekrar dene.'
+      isTimeout
+        ? 'İstek zaman aşımına uğradı. Lütfen tekrar dene.'
+        : 'Bağlantı hatası. Lütfen internet bağlantını kontrol edip tekrar dene.'
     );
     err.status = 0;
     throw err;
   }
+  clearTimeout(timeoutId);
 
   // 401 → token yenile ve tekrar dene
   if (res.status === 401 && retry) {
@@ -149,10 +157,10 @@ export const authApi = {
     return data;
   },
 
-  async sessionLogin(sessionId) {
+  async sessionLogin(sessionId, deviceInfo) {
     const data = await request('/auth/session-login', {
       method: 'POST',
-      body: JSON.stringify({ session_id: sessionId }),
+      body: JSON.stringify({ session_id: sessionId, device_info: deviceInfo ?? null }),
     });
     await tokenStore.save(data.access_token, data.refresh_token);
     return data;
