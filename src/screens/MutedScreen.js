@@ -4,10 +4,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { HugeiconsIcon } from '@hugeicons/react-native';
-import {
-  ArrowLeft02Icon, UserMinus01Icon, CheckmarkCircle01Icon,
-  LockIcon, PlayCircleIcon,
-} from '@hugeicons/core-free-icons';
+import { ArrowLeft02Icon, UserMinus01Icon, LockIcon, PlayCircleIcon } from '@hugeicons/core-free-icons';
 import { RewardedAd, RewardedAdEventType, AdEventType } from 'react-native-google-mobile-ads';
 import { SPACING, RADIUS } from '../constants/theme';
 import { useTheme } from '../context/ThemeContext';
@@ -17,13 +14,23 @@ import unlockState from '../state/unlockState';
 
 const VISIBLE_COUNT = 2;
 
+const MASCOT = require('../../assets/main/Top_View.png');
+
 function UserRow({ item, colors }) {
   const [imgErr, setImgErr] = useState(false);
+  const initial = (item.username || '?')[0].toUpperCase();
   return (
-    <View style={[styles.userRow, { borderBottomColor: colors.border }]}>
+    <View style={[styles.userRow, {
+      borderBottomColor: colors.border,
+      borderLeftWidth: 3,
+      borderLeftColor: colors.mauve + '70',
+      paddingLeft: SPACING.sm,
+    }]}>
       {item.profilePic && !imgErr
-        ? <Image source={{ uri: item.profilePic }} style={[styles.avatar, { backgroundColor: colors.cardMauve }]} onError={() => setImgErr(true)} />
-        : <View style={[styles.avatar, { backgroundColor: colors.cardMauve }]} />
+        ? <Image source={{ uri: item.profilePic }} style={[styles.avatar, { backgroundColor: colors.mauve + '20' }]} onError={() => setImgErr(true)} />
+        : <View style={[styles.avatar, { backgroundColor: colors.mauve + '20', alignItems: 'center', justifyContent: 'center' }]}>
+            <Text style={{ color: colors.mauve, fontSize: 18, fontWeight: '800' }}>{initial}</Text>
+          </View>
       }
       <View style={{ flex: 1 }}>
         <Text style={[styles.username, { color: colors.textPrimary }]}>@{item.username}</Text>
@@ -106,7 +113,6 @@ export default function MutedScreen({ navigation }) {
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]}>
-
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
           <HugeiconsIcon icon={ArrowLeft02Icon} size={22} color={colors.textSecondary} />
@@ -118,32 +124,38 @@ export default function MutedScreen({ navigation }) {
       </View>
 
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-
         <View style={[styles.badge2, { backgroundColor: colors.mauve + '25' }]}>
           <Text style={[styles.badgeText, { color: colors.mauve }]}>HAYALET TAKİPÇİLER</Text>
         </View>
 
         <View style={styles.titleRow}>
           <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>
-            {ghostFollowers.length} Kişi{'\n'}Hiç Etkileşime Girmedi
+            {ghostFollowers.length > 0 ? `${ghostFollowers.length} Kişi\nHiç Etkileşime Girmedi` : 'Etkileşim\nHarika!'}
           </Text>
           <HugeiconsIcon icon={UserMinus01Icon} size={42} color={colors.mauve + '40'} />
         </View>
 
-        <View style={[styles.hintBox, { backgroundColor: colors.mauve + '15', marginBottom: SPACING.md }]}>
-          <Text style={[styles.hintText, { color: colors.mauve }]}>
-            Seni takip ediyor ama son postlarından hiçbirini beğenmedi.
-          </Text>
-        </View>
-
         {ghostFollowers.length === 0 ? (
-          <View style={[styles.emptyState, { backgroundColor: colors.cardMauve }]}>
-            <HugeiconsIcon icon={CheckmarkCircle01Icon} size={48} color={colors.teal} style={{ marginBottom: SPACING.sm }} />
-            <Text style={[styles.emptyTitle, { color: colors.mauve }]}>Hayalet yok!</Text>
-            <Text style={[styles.emptyText, { color: colors.textMuted }]}>Tüm takipçilerin son postlarınla etkileşime geçmiş.</Text>
+          <View style={[styles.emptyContainer, { backgroundColor: colors.cardMauve }]}>
+            <Image source={MASCOT} style={styles.emptyMascot} resizeMode="contain" />
+            <Text style={[styles.emptyTitle, { color: colors.mauve }]}>Hayalet takipçi bulunamadı!</Text>
+            <Text style={[styles.emptySubtitle, { color: colors.textMuted }]}>
+              Takipçilerin son postlarınla etkileşime geçmiş görünüyor.
+            </Text>
+            <View style={[styles.emptyTip, { backgroundColor: colors.mauve + '18' }]}>
+              <Text style={[styles.emptyTipText, { color: colors.mauve }]}>
+                💡 Son 4 postunu hiç beğenmeyen takipçiler burada listelenir.
+              </Text>
+            </View>
           </View>
         ) : (
           <>
+            <View style={[styles.hintBox, { backgroundColor: colors.mauve + '15', marginBottom: SPACING.md }]}>
+              <Text style={[styles.hintText, { color: colors.mauve }]}>
+                Seni takip ediyor ama son postlarından hiçbirini beğenmedi.
+              </Text>
+            </View>
+
             {visible.map((g) => (
               <UserRow key={g.id} item={g} colors={colors} />
             ))}
@@ -162,7 +174,6 @@ export default function MutedScreen({ navigation }) {
             ))}
           </>
         )}
-
       </ScrollView>
     </SafeAreaView>
   );
@@ -200,17 +211,16 @@ const styles = StyleSheet.create({
   blurLine:       { height: 12, width: '45%', borderRadius: 6 },
 
   lockedSection: { marginTop: SPACING.xs, position: 'relative', overflow: 'hidden', borderRadius: RADIUS.md },
-  lockOverlay: {
-    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-    alignItems: 'center', justifyContent: 'center',
-    borderRadius: RADIUS.md, padding: SPACING.lg,
-  },
-  lockTitle: { fontSize: 16, fontWeight: '800', marginBottom: 4 },
-  lockSub:   { fontSize: 13, textAlign: 'center', marginBottom: SPACING.md },
-  adBtn:     { borderRadius: RADIUS.full, paddingHorizontal: SPACING.lg, paddingVertical: 10 },
-  adBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+  lockOverlay:   { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center', borderRadius: RADIUS.md, padding: SPACING.lg },
+  lockTitle:     { fontSize: 16, fontWeight: '800', marginBottom: 4 },
+  lockSub:       { fontSize: 13, textAlign: 'center', marginBottom: SPACING.md },
+  adBtn:         { borderRadius: RADIUS.full, paddingHorizontal: SPACING.lg, paddingVertical: 10 },
+  adBtnText:     { color: '#fff', fontSize: 14, fontWeight: '700' },
 
-  emptyState: { borderRadius: RADIUS.md, padding: SPACING.lg, alignItems: 'center', marginTop: SPACING.sm },
-  emptyTitle: { fontSize: 16, fontWeight: '800', marginBottom: 4 },
-  emptyText:  { fontSize: 13, textAlign: 'center', lineHeight: 20 },
+  emptyContainer: { borderRadius: RADIUS.lg, padding: SPACING.xl, alignItems: 'center', marginTop: SPACING.xs },
+  emptyMascot:    { width: 110, height: 110, marginBottom: SPACING.md },
+  emptyTitle:     { fontSize: 18, fontWeight: '800', marginBottom: SPACING.xs, textAlign: 'center' },
+  emptySubtitle:  { fontSize: 13, textAlign: 'center', lineHeight: 20, marginBottom: SPACING.md },
+  emptyTip:       { borderRadius: RADIUS.md, padding: SPACING.sm, paddingHorizontal: SPACING.md, alignSelf: 'stretch' },
+  emptyTipText:   { fontSize: 12, lineHeight: 18, textAlign: 'center' },
 });

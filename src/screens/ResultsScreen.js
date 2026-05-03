@@ -1,11 +1,14 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity,
   ScrollView, Dimensions, Image,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { HugeiconsIcon } from '@hugeicons/react-native';
-import { ViewIcon, UserMinus01Icon, BadgeAlertIcon, LockIcon, ArrowDown01Icon, AlertSquareIcon, Rocket01Icon, ArrowRight01Icon, PlayCircleIcon } from '@hugeicons/core-free-icons';
+import {
+  ViewIcon, UserMinus01Icon, BadgeAlertIcon,
+  LockIcon, AlertSquareIcon, Rocket01Icon,
+  ArrowRight01Icon, PlayCircleIcon,
+} from '@hugeicons/core-free-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { BannerAd, BannerAdSize, RewardedAd, RewardedAdEventType, AdEventType } from 'react-native-google-mobile-ads';
 import { useTheme } from '../context/ThemeContext';
@@ -13,9 +16,22 @@ import { useAuth } from '../context/AuthContext';
 import { SPACING, RADIUS } from '../constants/theme';
 import { AD_UNIT_IDS } from '../constants/ads';
 import unlockState from '../state/unlockState';
+
 const { width } = Dimensions.get('window');
 
-// ─── Score Ring ──────────────────────────────────────────────────────────────
+const SCORE_GHOST = {
+  high: require('../../assets/main/Happy_Spectator.png'),
+  mid:  require('../../assets/main/Undecided_Score.png'),
+  low:  require('../../assets/main/Surprised_Ghost.png'),
+};
+
+const EMPTY_GHOST = {
+  stalkers:    require('../../assets/main/Happy_Spectator.png'),
+  muted:       require('../../assets/main/Top_View.png'),
+  unfollowers: require('../../assets/main/Shy_Mode.png'),
+};
+
+// ─── Score Ring ───────────────────────────────────────────────────────────────
 function ScoreRing({ score, size = 130 }) {
   const { colors } = useTheme();
   const color = score >= 70 ? colors.teal : score >= 40 ? colors.gold : colors.mauve;
@@ -32,32 +48,85 @@ function ScoreRing({ score, size = 130 }) {
   );
 }
 
-// ─── Lock Overlay ─────────────────────────────────────────────────────────────
-function LockOverlay({ onUnlock, count }) {
+// ─── Score Breakdown ─────────────────────────────────────────────────────────
+function ScoreBreakdown({ profile }) {
   const { colors } = useTheme();
+  const followers  = profile?.followers ?? 0;
+  const following  = profile?.following ?? 0;
+  const posts      = profile?.posts ?? 0;
+  const visibility = profile?.visibilityScore ?? 0;
+
+  const ratio    = followers / Math.max(following, 1);
+  const ratioPct = Math.min(100, Math.round((ratio / 3) * 100));
+  const postPct  = Math.min(100, Math.round((posts / 100) * 100));
+
+  const bars = [
+    { label: 'Takipçi / Takip Oranı', pct: ratioPct,  color: colors.purple },
+    { label: 'İçerik Aktivitesi',      pct: postPct,   color: colors.teal },
+    { label: 'Görünürlük Skoru',       pct: visibility, color: colors.gold },
+  ];
+
+  return (
+    <View style={[styles.breakdownBox, { backgroundColor: colors.surface }]}>
+      <Text style={[styles.breakdownLabel, { color: colors.textMuted }]}>SKOR DETAYI</Text>
+      {bars.map((bar) => (
+        <View key={bar.label} style={styles.barRow}>
+          <View style={styles.barHeader}>
+            <Text style={[styles.barName, { color: colors.textSecondary }]}>{bar.label}</Text>
+            <Text style={[styles.barPct, { color: bar.color }]}>%{bar.pct}</Text>
+          </View>
+          <View style={[styles.barTrack, { backgroundColor: colors.border }]}>
+            <View style={[styles.barFill, { width: `${bar.pct}%`, backgroundColor: bar.color }]} />
+          </View>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+// ─── Empty State ──────────────────────────────────────────────────────────────
+function EmptyState({ mascot, title, subtitle, tip, accentColor, bgColor }) {
+  const { colors } = useTheme();
+  return (
+    <View style={[styles.emptyContainer, { backgroundColor: bgColor }]}>
+      <Image source={mascot} style={styles.emptyMascot} resizeMode="contain" />
+      <Text style={[styles.emptyTitle, { color: accentColor }]}>{title}</Text>
+      <Text style={[styles.emptySubtitle, { color: colors.textMuted }]}>{subtitle}</Text>
+      {tip ? (
+        <View style={[styles.emptyTip, { backgroundColor: accentColor + '18' }]}>
+          <Text style={[styles.emptyTipText, { color: accentColor }]}>{tip}</Text>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+// ─── Lock Overlay ─────────────────────────────────────────────────────────────
+function LockOverlay({ onUnlock, count, accentColor }) {
+  const { colors } = useTheme();
+  const accent = accentColor || colors.purple;
   const rewardedRef = useRef(null);
 
   const handleUnlock = useCallback(() => {
     const rewarded = RewardedAd.createForAdRequest(AD_UNIT_IDS.REWARDED);
     rewardedRef.current = rewarded;
-
     const unsubEarned = rewarded.addAdEventListener(RewardedAdEventType.EARNED_REWARD, onUnlock);
     const unsubError  = rewarded.addAdEventListener(AdEventType.ERROR, onUnlock);
-
     rewarded.load();
-    const unsubLoaded = rewarded.addAdEventListener(RewardedAdEventType.LOADED, () => {
-      rewarded.show();
-    });
-
+    const unsubLoaded = rewarded.addAdEventListener(RewardedAdEventType.LOADED, () => rewarded.show());
     return () => { unsubEarned(); unsubError(); unsubLoaded(); };
   }, [onUnlock]);
 
   return (
     <View style={[styles.lockOverlay, { backgroundColor: colors.background + 'CC' }]}>
-      <HugeiconsIcon icon={LockIcon} size={28} color={colors.purple} style={{ marginBottom: SPACING.xs }} />
+      <HugeiconsIcon icon={LockIcon} size={28} color={accent} style={{ marginBottom: SPACING.xs }} />
       <Text style={[styles.lockTitle, { color: colors.textPrimary }]}>{count} kişi daha gizli</Text>
       <Text style={[styles.lockSub, { color: colors.textMuted }]}>Listenin tamamını görmek için devam et</Text>
-      <TouchableOpacity style={[styles.adBtn, { backgroundColor: colors.purple, flexDirection: 'row', alignItems: 'center', gap: 6 }]} onPress={handleUnlock} activeOpacity={0.85}>
+      <TouchableOpacity
+        style={[styles.adBtn, { backgroundColor: accent, flexDirection: 'row', alignItems: 'center', gap: 6 }]}
+        onPress={handleUnlock}
+        activeOpacity={0.85}
+      >
         <HugeiconsIcon icon={PlayCircleIcon} size={16} color="#fff" />
         <Text style={[styles.adBtnText, { color: '#fff' }]}>Tümünü Göster</Text>
       </TouchableOpacity>
@@ -65,13 +134,12 @@ function LockOverlay({ onUnlock, count }) {
   );
 }
 
-// ─── Blurred Row (fake) ───────────────────────────────────────────────────────
+// ─── Blurred Row ──────────────────────────────────────────────────────────────
 function BlurredRow({ item }) {
   const { colors } = useTheme();
   const [imgErr, setImgErr] = useState(false);
   return (
     <View style={styles.blurRow}>
-      {/* Avatar — gizlenmiş */}
       <View style={styles.blurAvatarWrap}>
         {item?.profilePic && !imgErr
           ? <Image source={{ uri: item.profilePic }} style={[styles.blurCircle, { backgroundColor: colors.border }]} onError={() => setImgErr(true)} />
@@ -80,7 +148,6 @@ function BlurredRow({ item }) {
         <View style={[StyleSheet.absoluteFill, { borderRadius: 22, backgroundColor: colors.background + 'BB' }]} />
       </View>
       <View style={{ flex: 1, gap: 6 }}>
-        {/* Username — üstü örtülü */}
         <View style={{ position: 'relative' }}>
           <Text style={[styles.blurUsername, { color: colors.textPrimary, opacity: 0.15 }]}>
             @{item?.username || 'kullanici'}
@@ -94,14 +161,27 @@ function BlurredRow({ item }) {
 }
 
 // ─── User Row ─────────────────────────────────────────────────────────────────
-function UserRow({ item, right }) {
+function UserRow({ item, right, accentColor }) {
   const { colors } = useTheme();
   const [imgErr, setImgErr] = useState(false);
+  const accent  = accentColor || colors.purple;
+  const initial = (item.username || '?')[0].toUpperCase();
   return (
-    <View style={[styles.userRow, { borderBottomColor: colors.border }]}>
+    <View style={[styles.userRow, {
+      borderBottomColor: colors.border,
+      borderLeftWidth: 3,
+      borderLeftColor: accent + '70',
+      paddingLeft: SPACING.sm,
+    }]}>
       {item.profilePic && !imgErr
-        ? <Image source={{ uri: item.profilePic }} style={[styles.avatar, { backgroundColor: colors.cardPurple }]} onError={() => setImgErr(true)} />
-        : <View style={[styles.avatar, { backgroundColor: colors.cardPurple }]} />
+        ? <Image
+            source={{ uri: item.profilePic }}
+            style={[styles.avatar, { backgroundColor: accent + '20' }]}
+            onError={() => setImgErr(true)}
+          />
+        : <View style={[styles.avatar, { backgroundColor: accent + '20', alignItems: 'center', justifyContent: 'center' }]}>
+            <Text style={{ color: accent, fontSize: 18, fontWeight: '800' }}>{initial}</Text>
+          </View>
       }
       <View style={{ flex: 1 }}>
         <Text style={[styles.username, { color: colors.textPrimary }]}>@{item.username}</Text>
@@ -113,12 +193,6 @@ function UserRow({ item, right }) {
 }
 
 // ─── CARD 1: Ghost Score ──────────────────────────────────────────────────────
-const SCORE_GHOST = {
-  high:   require('../../assets/main/Happy_Spectator.png'),
-  mid:    require('../../assets/main/Undecided_Score.png'),
-  low:    require('../../assets/main/Surprised_Ghost.png'),
-};
-
 function ScoreCard({ profile }) {
   const { colors } = useTheme();
   const score = profile?.ghostScore ?? 0;
@@ -128,6 +202,7 @@ function ScoreCard({ profile }) {
       <View style={[styles.cardBadge, { backgroundColor: colors.purple + '25' }]}>
         <Text style={[styles.cardBadgeText, { color: colors.purple }]}>GHOST SCORE</Text>
       </View>
+
       <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: SPACING.lg }}>
         <Text style={[styles.cardTitle, { color: colors.textPrimary, marginBottom: 0, flex: 1 }]}>Sosyal{'\n'}Skorum</Text>
         <Image source={ghost} style={styles.scoreGhost} />
@@ -137,9 +212,9 @@ function ScoreCard({ profile }) {
         <ScoreRing score={score} />
         <View style={styles.statColumn}>
           {[
-            { label: 'Takipçi', value: (profile?.followers ?? 0).toLocaleString() },
-            { label: 'Takip', value: (profile?.following ?? 0).toLocaleString() },
-            { label: 'Post', value: String(profile?.posts ?? 0) },
+            { label: 'Takipçi',    value: (profile?.followers ?? 0).toLocaleString() },
+            { label: 'Takip',      value: (profile?.following ?? 0).toLocaleString() },
+            { label: 'Post',       value: String(profile?.posts ?? 0) },
             { label: 'Görünürlük', value: `%${profile?.visibilityScore ?? 0}` },
           ].map((s) => (
             <View key={s.label} style={styles.statItem}>
@@ -150,7 +225,7 @@ function ScoreCard({ profile }) {
         </View>
       </View>
 
-      <View style={[styles.hintBox, { backgroundColor: score >= 70 ? colors.teal + '18' : colors.gold + '18' }]}>
+      <View style={[styles.hintBox, { backgroundColor: score >= 70 ? colors.teal + '18' : colors.gold + '18', marginBottom: SPACING.md }]}>
         {score >= 70 ? (
           <Text style={[styles.hintText, { color: colors.teal }]}>🔥 Profilini aktif ve etkili kullanıyorsun!</Text>
         ) : (
@@ -160,6 +235,8 @@ function ScoreCard({ profile }) {
           </View>
         )}
       </View>
+
+      <ScoreBreakdown profile={profile} />
     </View>
   );
 }
@@ -168,13 +245,12 @@ function ScoreCard({ profile }) {
 function StalkersCard({ stalkers }) {
   const { colors } = useTheme();
   const [unlocked, setUnlocked] = useState(unlockState.stalkers);
-  const visible   = stalkers.slice(0, 1);
-  const locked    = stalkers.slice(1);
+  const visible = stalkers.slice(0, 1);
+  const locked  = stalkers.slice(1);
 
-  const handleUnlockStalkers = useCallback((cb) => {
+  const handleUnlock = useCallback(() => {
     unlockState.stalkers = true;
     setUnlocked(true);
-    cb?.();
   }, []);
 
   return (
@@ -183,65 +259,71 @@ function StalkersCard({ stalkers }) {
         <Text style={[styles.cardBadgeText, { color: colors.purple }]}>STALKER LİSTESİ</Text>
       </View>
       <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: SPACING.lg }}>
-        <Text style={[styles.cardTitle, { color: colors.textPrimary, marginBottom: 0, flex: 1 }]}>{stalkers.length} Kişi{'\n'}Seni İzliyor</Text>
+        <Text style={[styles.cardTitle, { color: colors.textPrimary, marginBottom: 0, flex: 1 }]}>
+          {stalkers.length > 0 ? `${stalkers.length} Kişi\nSeni İzliyor` : 'Gizli\nİzleyici Yok'}
+        </Text>
         <HugeiconsIcon icon={ViewIcon} size={42} color={colors.purple + '40'} />
       </View>
 
-      {visible.map((s) => (
-        <UserRow
-          key={s.id}
-          item={{ ...s, hint: 'Takip etmiyor' }}
-          right={
-            <View style={[styles.storyBadge, { backgroundColor: colors.purple + '20' }]}>
-              <Text style={[styles.storyCount, { color: colors.purple }]}>{s.viewedStories}</Text>
-              <Text style={[styles.storyLabel, { color: colors.textMuted }]}>story</Text>
-            </View>
-          }
+      {stalkers.length === 0 ? (
+        <EmptyState
+          mascot={EMPTY_GHOST.stalkers}
+          title="Temiz! Gizli izleyici yok."
+          subtitle="Son storylerine bakan herkes zaten takipçin."
+          tip="💡 Stalkerleri görmek için aktif story paylaşman gerekiyor."
+          accentColor={colors.purple}
+          bgColor={colors.cardPurple}
         />
-      ))}
-
-      {stalkers.length === 0 && (
-        <View style={[styles.emptyState, { backgroundColor: colors.cardPurple }]}>
-          <Text style={styles.emptyEmoji}>👻</Text>
-          <Text style={[styles.emptyTitle, { color: colors.purple }]}>Stalker yok!</Text>
-          <Text style={[styles.emptyText, { color: colors.textMuted }]}>Son storylerine bakan takipçisiz kimse görünmüyor.</Text>
-        </View>
-      )}
-
-      {!unlocked && stalkers.length > 0 && locked.length > 0 && (
-        <View style={styles.lockedSection}>
-          {locked.slice(0, 3).map((s, i) => <BlurredRow key={i} item={s} />)}
-          <LockOverlay onUnlock={() => handleUnlockStalkers()} count={locked.length} />
-        </View>
-      )}
-
-      {unlocked && locked.map((s) => (
-        <UserRow
-          key={s.id}
-          item={{ ...s, hint: 'Takip etmiyor' }}
-          right={
-            <View style={[styles.storyBadge, { backgroundColor: colors.purple + '20' }]}>
-              <Text style={[styles.storyCount, { color: colors.purple }]}>{s.viewedStories}</Text>
-              <Text style={[styles.storyLabel, { color: colors.textMuted }]}>story</Text>
+      ) : (
+        <>
+          {visible.map((s) => (
+            <UserRow
+              key={s.id}
+              item={{ ...s, hint: 'Takip etmiyor' }}
+              accentColor={colors.purple}
+              right={
+                <View style={[styles.storyBadge, { backgroundColor: colors.purple + '20' }]}>
+                  <Text style={[styles.storyCount, { color: colors.purple }]}>{s.viewedStories}</Text>
+                  <Text style={[styles.storyLabel, { color: colors.textMuted }]}>story</Text>
+                </View>
+              }
+            />
+          ))}
+          {!unlocked && locked.length > 0 && (
+            <View style={styles.lockedSection}>
+              {locked.slice(0, 3).map((s, i) => <BlurredRow key={i} item={s} />)}
+              <LockOverlay onUnlock={handleUnlock} count={locked.length} accentColor={colors.purple} />
             </View>
-          }
-        />
-      ))}
+          )}
+          {unlocked && locked.map((s) => (
+            <UserRow
+              key={s.id}
+              item={{ ...s, hint: 'Takip etmiyor' }}
+              accentColor={colors.purple}
+              right={
+                <View style={[styles.storyBadge, { backgroundColor: colors.purple + '20' }]}>
+                  <Text style={[styles.storyCount, { color: colors.purple }]}>{s.viewedStories}</Text>
+                  <Text style={[styles.storyLabel, { color: colors.textMuted }]}>story</Text>
+                </View>
+              }
+            />
+          ))}
+        </>
+      )}
     </View>
   );
 }
 
-// ─── CARD 3: Engagement Drop (eski "Muted") ───────────────────────────────────
+// ─── CARD 3: Ghost Followers ──────────────────────────────────────────────────
 function MutedCard({ ghostFollowers }) {
   const { colors } = useTheme();
   const [unlocked, setUnlocked] = useState(unlockState.ghostFollowers);
   const visible = ghostFollowers.slice(0, 2);
   const locked  = ghostFollowers.slice(2);
 
-  const handleUnlockMuted = useCallback((cb) => {
+  const handleUnlock = useCallback(() => {
     unlockState.ghostFollowers = true;
     setUnlocked(true);
-    cb?.();
   }, []);
 
   return (
@@ -250,28 +332,33 @@ function MutedCard({ ghostFollowers }) {
         <Text style={[styles.cardBadgeText, { color: colors.mauve }]}>HAYALET TAKİPÇİLER</Text>
       </View>
       <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: SPACING.lg }}>
-        <Text style={[styles.cardTitle, { color: colors.textPrimary, marginBottom: 0, flex: 1 }]}>{ghostFollowers.length} Kişi{'\n'}Hiç Etkileşime Girmedi</Text>
+        <Text style={[styles.cardTitle, { color: colors.textPrimary, marginBottom: 0, flex: 1 }]}>
+          {ghostFollowers.length > 0 ? `${ghostFollowers.length} Kişi\nHiç Etkileşime Girmedi` : 'Etkileşim\nHarika!'}
+        </Text>
         <HugeiconsIcon icon={UserMinus01Icon} size={42} color={colors.mauve + '40'} />
       </View>
 
-      <View style={[styles.hintBox, { backgroundColor: colors.mauve + '15', marginBottom: SPACING.md }]}>
-        <Text style={[styles.hintText, { color: colors.mauve }]}>
-          Seni takip ediyor ama son postlarından hiçbirini beğenmedi.
-        </Text>
-      </View>
-
       {ghostFollowers.length === 0 ? (
-        <View style={[styles.emptyState, { backgroundColor: colors.cardMauve }]}>
-          <Text style={styles.emptyEmoji}>🎉</Text>
-          <Text style={[styles.emptyTitle, { color: colors.mauve }]}>Hayalet yok!</Text>
-          <Text style={[styles.emptyText, { color: colors.textMuted }]}>Tüm takipçilerin son postlarınla etkileşime geçmiş.</Text>
-        </View>
+        <EmptyState
+          mascot={EMPTY_GHOST.muted}
+          title="Hayalet takipçi bulunamadı!"
+          subtitle="Takipçilerin son postlarınla etkileşime geçmiş görünüyor."
+          tip="💡 Son 4 postunu hiç beğenmeyen takipçiler burada listelenir."
+          accentColor={colors.mauve}
+          bgColor={colors.cardMauve}
+        />
       ) : (
         <>
+          <View style={[styles.hintBox, { backgroundColor: colors.mauve + '15', marginBottom: SPACING.md }]}>
+            <Text style={[styles.hintText, { color: colors.mauve }]}>
+              Seni takip ediyor ama son postlarından hiçbirini beğenmedi.
+            </Text>
+          </View>
           {visible.map((g) => (
             <UserRow
               key={g.id}
               item={{ ...g, hint: 'Son postlarda beğeni yok' }}
+              accentColor={colors.mauve}
               right={
                 <View style={[styles.storyBadge, { backgroundColor: colors.mauve + '20' }]}>
                   <Text style={[styles.storyCount, { color: colors.mauve }]}>0</Text>
@@ -283,13 +370,14 @@ function MutedCard({ ghostFollowers }) {
           {!unlocked && locked.length > 0 && (
             <View style={styles.lockedSection}>
               {locked.slice(0, 3).map((g, i) => <BlurredRow key={i} item={g} />)}
-              <LockOverlay onUnlock={() => handleUnlockMuted()} count={locked.length} />
+              <LockOverlay onUnlock={handleUnlock} count={locked.length} accentColor={colors.mauve} />
             </View>
           )}
           {unlocked && locked.map((g) => (
             <UserRow
               key={g.id}
               item={{ ...g, hint: 'Son postlarda beğeni yok' }}
+              accentColor={colors.mauve}
               right={
                 <View style={[styles.storyBadge, { backgroundColor: colors.mauve + '20' }]}>
                   <Text style={[styles.storyCount, { color: colors.mauve }]}>0</Text>
@@ -308,15 +396,14 @@ function MutedCard({ ghostFollowers }) {
 function UnfollowersCard({ unfollowers }) {
   const { colors } = useTheme();
   const [unlocked, setUnlocked] = useState(unlockState.unfollowers);
-  const mutual   = unfollowers.filter((u) => u.wasFollowedBack).length;
+  const mutual  = unfollowers.filter((u) => u.wasFollowedBack).length;
+  const visible = unfollowers.slice(0, 2);
+  const locked  = unfollowers.slice(2);
 
-  const handleUnlockUnfollowers = useCallback((cb) => {
+  const handleUnlock = useCallback(() => {
     unlockState.unfollowers = true;
     setUnlocked(true);
-    cb?.();
   }, []);
-  const visible  = unfollowers.slice(0, 2);
-  const locked   = unfollowers.slice(2);
 
   return (
     <View style={styles.card}>
@@ -324,59 +411,67 @@ function UnfollowersCard({ unfollowers }) {
         <Text style={[styles.cardBadgeText, { color: colors.teal }]}>GERİ TAKİP ETMEYENLER</Text>
       </View>
       <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: SPACING.lg }}>
-        <Text style={[styles.cardTitle, { color: colors.textPrimary, marginBottom: 0, flex: 1 }]}>{unfollowers.length} Kişi{'\n'}Seni Takip Etmiyor</Text>
+        <Text style={[styles.cardTitle, { color: colors.textPrimary, marginBottom: 0, flex: 1 }]}>
+          {unfollowers.length > 0 ? `${unfollowers.length} Kişi\nSeni Takip Etmiyor` : 'Karşılıklı\nTakipleşiyorsunuz!'}
+        </Text>
         <HugeiconsIcon icon={BadgeAlertIcon} size={42} color={colors.teal + '40'} />
       </View>
 
-      {mutual > 0 && (
-        <View style={[styles.mutualPill, { backgroundColor: colors.gold + '20', flexDirection: 'row', alignItems: 'center', gap: 6 }]}>
-          <HugeiconsIcon icon={AlertSquareIcon} size={14} color={colors.gold} />
-          <Text style={[styles.mutualText, { color: colors.gold }]}>
-            {mutual} kişi eskiden seni takip ediyordu
-          </Text>
-        </View>
-      )}
-
-      {visible.map((u) => (
-        <UserRow
-          key={u.id}
-          item={{ ...u, hint: u.unfollowedAt }}
-          right={
-            <View style={[
-              styles.badge,
-              { borderColor: u.wasFollowedBack ? colors.teal + '50' : colors.border },
-            ]}>
-              <Text style={{ fontSize: 11, fontWeight: '600', color: u.wasFollowedBack ? colors.teal : colors.textMuted }}>
-                {u.wasFollowedBack ? 'Takibi bıraktı' : 'Hiç takip etmedi'}
+      {unfollowers.length === 0 ? (
+        <EmptyState
+          mascot={EMPTY_GHOST.unfollowers}
+          title="Harika! Hepsi takip ediyor."
+          subtitle="Takip ettiğin herkes seni de takip ediyor."
+          tip="💡 Takip ettiğin ama seni takip etmeyenler burada görünür."
+          accentColor={colors.teal}
+          bgColor={colors.cardTeal}
+        />
+      ) : (
+        <>
+          {mutual > 0 && (
+            <View style={[styles.mutualPill, { backgroundColor: colors.gold + '20', flexDirection: 'row', alignItems: 'center', gap: 6 }]}>
+              <HugeiconsIcon icon={AlertSquareIcon} size={14} color={colors.gold} />
+              <Text style={[styles.mutualText, { color: colors.gold }]}>
+                {mutual} kişi eskiden seni takip ediyordu
               </Text>
             </View>
-          }
-        />
-      ))}
-
-      {!unlocked && locked.length > 0 && (
-        <View style={styles.lockedSection}>
-          {locked.slice(0, 3).map((u, i) => <BlurredRow key={i} item={u} />)}
-          <LockOverlay onUnlock={() => handleUnlockUnfollowers()} count={locked.length} />
-        </View>
-      )}
-
-      {unlocked && locked.map((u) => (
-        <UserRow
-          key={u.id}
-          item={{ ...u, hint: u.unfollowedAt }}
-          right={
-            <View style={[
-              styles.badge,
-              { borderColor: u.wasFollowedBack ? colors.teal + '50' : colors.border },
-            ]}>
-              <Text style={{ fontSize: 11, fontWeight: '600', color: u.wasFollowedBack ? colors.teal : colors.textMuted }}>
-                {u.wasFollowedBack ? 'Takibi bıraktı' : 'Hiç takip etmedi'}
-              </Text>
+          )}
+          {visible.map((u) => (
+            <UserRow
+              key={u.id}
+              item={{ ...u, hint: u.unfollowedAt }}
+              accentColor={colors.teal}
+              right={
+                <View style={[styles.badge, { borderColor: u.wasFollowedBack ? colors.teal + '50' : colors.border }]}>
+                  <Text style={{ fontSize: 11, fontWeight: '600', color: u.wasFollowedBack ? colors.teal : colors.textMuted }}>
+                    {u.wasFollowedBack ? 'Takibi bıraktı' : 'Hiç takip etmedi'}
+                  </Text>
+                </View>
+              }
+            />
+          ))}
+          {!unlocked && locked.length > 0 && (
+            <View style={styles.lockedSection}>
+              {locked.slice(0, 3).map((u, i) => <BlurredRow key={i} item={u} />)}
+              <LockOverlay onUnlock={handleUnlock} count={locked.length} accentColor={colors.teal} />
             </View>
-          }
-        />
-      ))}
+          )}
+          {unlocked && locked.map((u) => (
+            <UserRow
+              key={u.id}
+              item={{ ...u, hint: u.unfollowedAt }}
+              accentColor={colors.teal}
+              right={
+                <View style={[styles.badge, { borderColor: u.wasFollowedBack ? colors.teal + '50' : colors.border }]}>
+                  <Text style={{ fontSize: 11, fontWeight: '600', color: u.wasFollowedBack ? colors.teal : colors.textMuted }}>
+                    {u.wasFollowedBack ? 'Takibi bıraktı' : 'Hiç takip etmedi'}
+                  </Text>
+                </View>
+              }
+            />
+          ))}
+        </>
+      )}
     </View>
   );
 }
@@ -385,7 +480,7 @@ function UnfollowersCard({ unfollowers }) {
 export default function ResultsScreen({ navigation }) {
   const { colors } = useTheme();
   const { data } = useAuth();
-  const scrollRef = useRef(null);
+  const scrollRef  = useRef(null);
   const [cardIndex, setCardIndex] = useState(0);
 
   const profile        = data?.profile        ?? {};
@@ -414,7 +509,6 @@ export default function ResultsScreen({ navigation }) {
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]}>
-      {/* Progress dots */}
       <View style={styles.dotsRow}>
         {CARDS.map((_, i) => (
           <View
@@ -429,7 +523,6 @@ export default function ResultsScreen({ navigation }) {
         ))}
       </View>
 
-      {/* Cards horizontal pager */}
       <ScrollView
         ref={scrollRef}
         horizontal
@@ -450,13 +543,8 @@ export default function ResultsScreen({ navigation }) {
         ))}
       </ScrollView>
 
-      {/* Banner */}
-      <BannerAd
-        unitId={AD_UNIT_IDS.BANNER}
-        size={BannerAdSize.ANCHORED_ADAPTIVE_BANNER}
-      />
+      <BannerAd unitId={AD_UNIT_IDS.BANNER} size={BannerAdSize.ANCHORED_ADAPTIVE_BANNER} />
 
-      {/* Next button */}
       <TouchableOpacity
         style={[styles.nextBtn, { backgroundColor: colors.purple }]}
         onPress={next}
@@ -464,9 +552,7 @@ export default function ResultsScreen({ navigation }) {
       >
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           {isLast && <HugeiconsIcon icon={Rocket01Icon} size={20} color="#FFF" />}
-          <Text style={styles.nextBtnText}>
-            {isLast ? 'Dashboard\'a Geç' : 'Sonraki'}
-          </Text>
+          <Text style={styles.nextBtnText}>{isLast ? "Dashboard'a Geç" : 'Sonraki'}</Text>
           {!isLast && <HugeiconsIcon icon={ArrowRight01Icon} size={20} color="#FFF" />}
         </View>
       </TouchableOpacity>
@@ -478,89 +564,73 @@ export default function ResultsScreen({ navigation }) {
 const styles = StyleSheet.create({
   safe: { flex: 1 },
 
-  dotsRow: { flexDirection: 'row', justifyContent: 'center', gap: 6, paddingVertical: SPACING.md },
+  dotsRow:     { flexDirection: 'row', justifyContent: 'center', gap: 6, paddingVertical: SPACING.md },
   progressDot: { height: 8, borderRadius: 4 },
+  cardScroll:  { padding: SPACING.lg, paddingBottom: SPACING.xxl },
+  card:        { paddingBottom: SPACING.lg },
 
-  cardScroll: { padding: SPACING.lg, paddingBottom: SPACING.xxl },
-
-  // Card wrapper
-  card: { paddingBottom: SPACING.lg },
-
-  cardBadge: {
-    alignSelf: 'flex-start',
-    borderRadius: RADIUS.full,
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: 4,
-    marginBottom: SPACING.md,
-  },
+  cardBadge:     { alignSelf: 'flex-start', borderRadius: RADIUS.full, paddingHorizontal: SPACING.sm, paddingVertical: 4, marginBottom: SPACING.md },
   cardBadgeText: { fontSize: 11, fontWeight: '800', letterSpacing: 1.2 },
+  cardTitle:     { fontSize: 32, fontWeight: '800', lineHeight: 38, marginBottom: SPACING.lg },
+  scoreGhost:    { width: 92, height: 92 },
 
-  cardTitle: {
-    fontSize: 32, fontWeight: '800',
-    lineHeight: 38, marginBottom: SPACING.lg,
-  },
+  scoreCenterRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.lg, marginBottom: SPACING.lg },
+  statColumn:     { flex: 1, gap: SPACING.sm },
+  statItem:       { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  statValue:      { fontSize: 16, fontWeight: '700' },
+  statLabel:      { fontSize: 12 },
 
-  scoreGhost: { width: 92, height: 92 },
+  hintBox:  { borderRadius: RADIUS.md, padding: SPACING.md },
+  hintText: { fontSize: 13, fontWeight: '600', textAlign: 'center', lineHeight: 20 },
 
-  // Score card
-  scoreCenterRow: {
-    flexDirection: 'row', alignItems: 'center',
-    gap: SPACING.lg, marginBottom: SPACING.lg,
-  },
-  statColumn: { flex: 1, gap: SPACING.sm },
-  statItem:   { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  statValue:  { fontSize: 16, fontWeight: '700' },
-  statLabel:  { fontSize: 12 },
-  hintBox:    { borderRadius: RADIUS.md, padding: SPACING.md },
-  hintText:   { fontSize: 13, fontWeight: '600', textAlign: 'center', lineHeight: 20 },
+  // Score breakdown
+  breakdownBox:   { borderRadius: RADIUS.md, padding: SPACING.md },
+  breakdownLabel: { fontSize: 11, fontWeight: '700', letterSpacing: 1, marginBottom: SPACING.sm },
+  barRow:         { marginBottom: SPACING.sm },
+  barHeader:      { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
+  barName:        { fontSize: 12 },
+  barPct:         { fontSize: 12, fontWeight: '700' },
+  barTrack:       { height: 6, borderRadius: 3, overflow: 'hidden' },
+  barFill:        { height: 6, borderRadius: 3 },
+
+  // Empty state
+  emptyContainer: { borderRadius: RADIUS.lg, padding: SPACING.xl, alignItems: 'center', marginTop: SPACING.xs },
+  emptyMascot:    { width: 110, height: 110, marginBottom: SPACING.md },
+  emptyTitle:     { fontSize: 18, fontWeight: '800', marginBottom: SPACING.xs, textAlign: 'center' },
+  emptySubtitle:  { fontSize: 13, textAlign: 'center', lineHeight: 20, marginBottom: SPACING.md },
+  emptyTip:       { borderRadius: RADIUS.md, padding: SPACING.sm, paddingHorizontal: SPACING.md, alignSelf: 'stretch' },
+  emptyTipText:   { fontSize: 12, lineHeight: 18, textAlign: 'center' },
 
   // User rows
-  userRow:   { flexDirection: 'row', alignItems: 'center', paddingVertical: SPACING.md, borderBottomWidth: 1 },
-  avatar:    { width: 44, height: 44, borderRadius: RADIUS.full, marginRight: SPACING.md },
-  username:  { fontSize: 14, fontWeight: '600' },
+  userRow:      { flexDirection: 'row', alignItems: 'center', paddingVertical: SPACING.md, borderBottomWidth: 1 },
+  avatar:       { width: 44, height: 44, borderRadius: RADIUS.full, marginRight: SPACING.md },
+  username:     { fontSize: 14, fontWeight: '600' },
   usernameHint: { fontSize: 12, marginTop: 2 },
 
   storyBadge: { alignItems: 'center', borderRadius: RADIUS.sm, padding: SPACING.sm, minWidth: 50 },
   storyCount: { fontSize: 16, fontWeight: '800' },
   storyLabel: { fontSize: 10 },
+  badge:      { paddingHorizontal: SPACING.sm, paddingVertical: 5, borderRadius: RADIUS.full, borderWidth: 1 },
 
-  badge: { paddingHorizontal: SPACING.sm, paddingVertical: 5, borderRadius: RADIUS.full, borderWidth: 1 },
-
-  // Mutual pill
   mutualPill: { borderRadius: RADIUS.md, paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm, marginBottom: SPACING.md, alignSelf: 'flex-start' },
   mutualText: { fontSize: 12, fontWeight: '700' },
 
-  // Empty state
-  emptyState:  { borderRadius: RADIUS.md, padding: SPACING.lg, alignItems: 'center', marginTop: SPACING.sm },
-  emptyEmoji:  { fontSize: 36, marginBottom: SPACING.sm },
-  emptyTitle:  { fontSize: 16, fontWeight: '800', marginBottom: 4 },
-  emptyText:   { fontSize: 13, textAlign: 'center', lineHeight: 20 },
-
-  // Locked section
-  lockedSection: { marginTop: SPACING.xs, position: 'relative', overflow: 'hidden', borderRadius: RADIUS.md, minHeight: 170 },
+  // Blurred row
   blurRow:       { flexDirection: 'row', alignItems: 'center', paddingVertical: SPACING.md, gap: SPACING.md },
   blurAvatarWrap:{ position: 'relative', width: 44, height: 44 },
   blurCircle:    { width: 44, height: 44, borderRadius: 22 },
   blurLine:      { height: 12, width: '65%', borderRadius: 6 },
   blurUsername:  { fontSize: 14, fontWeight: '600', lineHeight: 20 },
 
-  lockOverlay: {
-    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-    alignItems: 'center', justifyContent: 'center',
-    borderRadius: RADIUS.md, padding: SPACING.lg,
-  },
-  lockEmoji: { fontSize: 32, marginBottom: SPACING.sm },
-  lockTitle: { fontSize: 16, fontWeight: '800', marginBottom: 4 },
-  lockSub:   { fontSize: 13, textAlign: 'center', marginBottom: SPACING.md },
-  adBtn:     { borderRadius: RADIUS.full, paddingHorizontal: SPACING.lg, paddingVertical: 10 },
-  adBtnText: { color: '#1A1200', fontSize: 14, fontWeight: '700' },
+  // Lock overlay
+  lockedSection: { marginTop: SPACING.xs, position: 'relative', overflow: 'hidden', borderRadius: RADIUS.md, minHeight: 170 },
+  lockOverlay:   { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center', borderRadius: RADIUS.md, padding: SPACING.lg },
+  lockTitle:     { fontSize: 16, fontWeight: '800', marginBottom: 4 },
+  lockSub:       { fontSize: 13, textAlign: 'center', marginBottom: SPACING.md },
+  adBtn:         { borderRadius: RADIUS.full, paddingHorizontal: SPACING.lg, paddingVertical: 10 },
+  adBtnText:     { fontSize: 14, fontWeight: '700' },
 
   // Next button
-  nextBtn: {
-    margin: SPACING.lg,
-    borderRadius: RADIUS.full,
-    paddingVertical: 16,
-    alignItems: 'center',
-  },
+  nextBtn:     { margin: SPACING.lg, borderRadius: RADIUS.full, paddingVertical: 16, alignItems: 'center' },
   nextBtnText: { color: '#FFF', fontSize: 16, fontWeight: '700' },
 });

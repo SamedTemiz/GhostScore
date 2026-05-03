@@ -4,10 +4,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { HugeiconsIcon } from '@hugeicons/react-native';
-import {
-  ArrowLeft02Icon, BadgeAlertIcon, AlertSquareIcon,
-  LockIcon, PlayCircleIcon,
-} from '@hugeicons/core-free-icons';
+import { ArrowLeft02Icon, BadgeAlertIcon, AlertSquareIcon, LockIcon, PlayCircleIcon } from '@hugeicons/core-free-icons';
 import { RewardedAd, RewardedAdEventType, AdEventType } from 'react-native-google-mobile-ads';
 import { SPACING, RADIUS } from '../constants/theme';
 import { useTheme } from '../context/ThemeContext';
@@ -17,15 +14,24 @@ import unlockState from '../state/unlockState';
 
 const VISIBLE_COUNT = 2;
 
-// ─── User Row (Results ekranıyla aynı) ───────────────────────────────────────
+const MASCOT = require('../../assets/main/Shy_Mode.png');
+
 function UserRow({ item, colors }) {
   const [imgErr, setImgErr] = useState(false);
-  const mutual = item.wasFollowedBack;
+  const mutual  = item.wasFollowedBack;
+  const initial = (item.username || '?')[0].toUpperCase();
   return (
-    <View style={[styles.userRow, { borderBottomColor: colors.border }]}>
+    <View style={[styles.userRow, {
+      borderBottomColor: colors.border,
+      borderLeftWidth: 3,
+      borderLeftColor: colors.teal + '70',
+      paddingLeft: SPACING.sm,
+    }]}>
       {item.profilePic && !imgErr
-        ? <Image source={{ uri: item.profilePic }} style={[styles.avatar, { backgroundColor: colors.cardTeal }]} onError={() => setImgErr(true)} />
-        : <View style={[styles.avatar, { backgroundColor: colors.cardTeal }]} />
+        ? <Image source={{ uri: item.profilePic }} style={[styles.avatar, { backgroundColor: colors.teal + '20' }]} onError={() => setImgErr(true)} />
+        : <View style={[styles.avatar, { backgroundColor: colors.teal + '20', alignItems: 'center', justifyContent: 'center' }]}>
+            <Text style={{ color: colors.teal, fontSize: 18, fontWeight: '800' }}>{initial}</Text>
+          </View>
       }
       <View style={{ flex: 1 }}>
         <Text style={[styles.username, { color: colors.textPrimary }]}>@{item.username}</Text>
@@ -40,7 +46,6 @@ function UserRow({ item, colors }) {
   );
 }
 
-// ─── Blurred Row (Results ekranıyla aynı) ────────────────────────────────────
 function BlurredRow({ item, colors }) {
   const [imgErr, setImgErr] = useState(false);
   return (
@@ -65,7 +70,6 @@ function BlurredRow({ item, colors }) {
   );
 }
 
-// ─── Lock Overlay (Results ekranıyla aynı) ───────────────────────────────────
 function LockOverlay({ onUnlock, count, colors }) {
   const rewardedRef = useRef(null);
 
@@ -95,7 +99,6 @@ function LockOverlay({ onUnlock, count, colors }) {
   );
 }
 
-// ─── Screen ───────────────────────────────────────────────────────────────────
 export default function UnfollowersScreen({ navigation }) {
   const { colors } = useTheme();
   const { data } = useAuth();
@@ -113,8 +116,6 @@ export default function UnfollowersScreen({ navigation }) {
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]}>
-
-      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
           <HugeiconsIcon icon={ArrowLeft02Icon} size={22} color={colors.textSecondary} />
@@ -126,50 +127,59 @@ export default function UnfollowersScreen({ navigation }) {
       </View>
 
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-
-        {/* Badge */}
         <View style={[styles.badge2, { backgroundColor: colors.teal + '25' }]}>
           <Text style={[styles.badgeText, { color: colors.teal }]}>GERİ TAKİP ETMEYENLER</Text>
         </View>
 
-        {/* Title row */}
         <View style={styles.titleRow}>
           <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>
-            {unfollowers.length} Kişi{'\n'}Seni Takip Etmiyor
+            {unfollowers.length > 0 ? `${unfollowers.length} Kişi\nSeni Takip Etmiyor` : 'Karşılıklı\nTakipleşiyorsunuz!'}
           </Text>
           <HugeiconsIcon icon={BadgeAlertIcon} size={42} color={colors.teal + '40'} />
         </View>
 
-        {/* Mutual pill */}
-        {mutual > 0 && (
-          <View style={[styles.mutualPill, { backgroundColor: colors.gold + '20' }]}>
-            <HugeiconsIcon icon={AlertSquareIcon} size={14} color={colors.gold} />
-            <Text style={[styles.mutualText, { color: colors.gold }]}>
-              {mutual} kişi eskiden seni takip ediyordu
+        {unfollowers.length === 0 ? (
+          <View style={[styles.emptyContainer, { backgroundColor: colors.cardTeal }]}>
+            <Image source={MASCOT} style={styles.emptyMascot} resizeMode="contain" />
+            <Text style={[styles.emptyTitle, { color: colors.teal }]}>Harika! Hepsi takip ediyor.</Text>
+            <Text style={[styles.emptySubtitle, { color: colors.textMuted }]}>
+              Takip ettiğin herkes seni de takip ediyor.
             </Text>
+            <View style={[styles.emptyTip, { backgroundColor: colors.teal + '18' }]}>
+              <Text style={[styles.emptyTipText, { color: colors.teal }]}>
+                💡 Takip ettiğin ama seni takip etmeyenler burada görünür.
+              </Text>
+            </View>
           </View>
-        )}
+        ) : (
+          <>
+            {mutual > 0 && (
+              <View style={[styles.mutualPill, { backgroundColor: colors.gold + '20' }]}>
+                <HugeiconsIcon icon={AlertSquareIcon} size={14} color={colors.gold} />
+                <Text style={[styles.mutualText, { color: colors.gold }]}>
+                  {mutual} kişi eskiden seni takip ediyordu
+                </Text>
+              </View>
+            )}
 
-        {/* Visible rows */}
-        {visible.map((u) => (
-          <UserRow key={u.id} item={{ ...u, hint: u.unfollowedAt }} colors={colors} />
-        ))}
-
-        {/* Locked section */}
-        {!unlocked && locked.length > 0 && (
-          <View style={[styles.lockedSection, { minHeight: Math.min(locked.length, 3) * 68 + 140 }]}>
-            {locked.slice(0, 3).map((u, i) => (
-              <BlurredRow key={i} item={u} colors={colors} />
+            {visible.map((u) => (
+              <UserRow key={u.id} item={{ ...u, hint: u.unfollowedAt }} colors={colors} />
             ))}
-            <LockOverlay onUnlock={handleUnlock} count={locked.length} colors={colors} />
-          </View>
+
+            {!unlocked && locked.length > 0 && (
+              <View style={[styles.lockedSection, { minHeight: Math.min(locked.length, 3) * 68 + 140 }]}>
+                {locked.slice(0, 3).map((u, i) => (
+                  <BlurredRow key={i} item={u} colors={colors} />
+                ))}
+                <LockOverlay onUnlock={handleUnlock} count={locked.length} colors={colors} />
+              </View>
+            )}
+
+            {unlocked && locked.map((u) => (
+              <UserRow key={u.id} item={{ ...u, hint: u.unfollowedAt }} colors={colors} />
+            ))}
+          </>
         )}
-
-        {/* Unlocked rows */}
-        {unlocked && locked.map((u) => (
-          <UserRow key={u.id} item={{ ...u, hint: u.unfollowedAt }} colors={colors} />
-        ))}
-
       </ScrollView>
     </SafeAreaView>
   );
@@ -193,27 +203,28 @@ const styles = StyleSheet.create({
   mutualPill: { flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: RADIUS.md, paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm, marginBottom: SPACING.md, alignSelf: 'flex-start' },
   mutualText: { fontSize: 12, fontWeight: '700' },
 
-  userRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: SPACING.md, borderBottomWidth: 1 },
-  avatar:  { width: 44, height: 44, borderRadius: RADIUS.full, marginRight: SPACING.md },
+  userRow:  { flexDirection: 'row', alignItems: 'center', paddingVertical: SPACING.md, borderBottomWidth: 1 },
+  avatar:   { width: 44, height: 44, borderRadius: RADIUS.full, marginRight: SPACING.md },
   username: { fontSize: 14, fontWeight: '600' },
   hint:     { fontSize: 12, marginTop: 2 },
   badge:    { paddingHorizontal: SPACING.sm, paddingVertical: 5, borderRadius: RADIUS.full, borderWidth: 1 },
 
-  // Blurred
-  blurRow:       { flexDirection: 'row', alignItems: 'center', paddingVertical: SPACING.md, gap: SPACING.md },
-  blurAvatarWrap:{ position: 'relative', width: 44, height: 44 },
-  blurCircle:    { width: 44, height: 44, borderRadius: 22 },
-  blurLine:      { height: 12, width: '45%', borderRadius: 6 },
+  blurRow:        { flexDirection: 'row', alignItems: 'center', paddingVertical: SPACING.md, gap: SPACING.md },
+  blurAvatarWrap: { position: 'relative', width: 44, height: 44 },
+  blurCircle:     { width: 44, height: 44, borderRadius: 22 },
+  blurLine:       { height: 12, width: '45%', borderRadius: 6 },
 
-  // Lock
   lockedSection: { marginTop: SPACING.xs, position: 'relative', overflow: 'hidden', borderRadius: RADIUS.md },
-  lockOverlay: {
-    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-    alignItems: 'center', justifyContent: 'center',
-    borderRadius: RADIUS.md, padding: SPACING.lg,
-  },
-  lockTitle: { fontSize: 16, fontWeight: '800', marginBottom: 4 },
-  lockSub:   { fontSize: 13, textAlign: 'center', marginBottom: SPACING.md },
-  adBtn:     { borderRadius: RADIUS.full, paddingHorizontal: SPACING.lg, paddingVertical: 10 },
-  adBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+  lockOverlay:   { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center', borderRadius: RADIUS.md, padding: SPACING.lg },
+  lockTitle:     { fontSize: 16, fontWeight: '800', marginBottom: 4 },
+  lockSub:       { fontSize: 13, textAlign: 'center', marginBottom: SPACING.md },
+  adBtn:         { borderRadius: RADIUS.full, paddingHorizontal: SPACING.lg, paddingVertical: 10 },
+  adBtnText:     { color: '#fff', fontSize: 14, fontWeight: '700' },
+
+  emptyContainer: { borderRadius: RADIUS.lg, padding: SPACING.xl, alignItems: 'center', marginTop: SPACING.xs },
+  emptyMascot:    { width: 110, height: 110, marginBottom: SPACING.md },
+  emptyTitle:     { fontSize: 18, fontWeight: '800', marginBottom: SPACING.xs, textAlign: 'center' },
+  emptySubtitle:  { fontSize: 13, textAlign: 'center', lineHeight: 20, marginBottom: SPACING.md },
+  emptyTip:       { borderRadius: RADIUS.md, padding: SPACING.sm, paddingHorizontal: SPACING.md, alignSelf: 'stretch' },
+  emptyTipText:   { fontSize: 12, lineHeight: 18, textAlign: 'center' },
 });
