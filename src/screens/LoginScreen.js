@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   View, Text, TouchableOpacity,
   StyleSheet, StatusBar, Modal, ScrollView,
-  ActivityIndicator,
+  ActivityIndicator, Image,
 } from 'react-native';
 import { useState, useRef, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -29,6 +29,14 @@ const IG_COLOR     = '#C13584';
 const DEV_MODE_KEY = 'gs_dev_mode';
 const IG_LOGIN_URL = 'https://www.instagram.com/accounts/login/';
 const IG_HOME_URL  = 'https://www.instagram.com/';
+
+const GHOST_MASCOT = require('../../assets/main/Suspicious_Look.png');
+
+const FEATURES = [
+  { emoji: '👁',  label: 'Stalker Tespiti',      desc: 'Story\'ni gizlice izleyenleri bul' },
+  { emoji: '👻', label: 'Hayalet Takipçiler',    desc: 'Hiç etkileşime girmeyenleri gör' },
+  { emoji: '🔔', label: 'Unfollower Alarmı',     desc: 'Seni takipten çıkanları takip et' },
+];
 
 export default function LoginScreen({ navigation }) {
   const { colors }                          = useTheme();
@@ -117,15 +125,30 @@ export default function LoginScreen({ navigation }) {
         <View style={[styles.container, { backgroundColor: colors.background }]}>
           <View style={styles.content}>
 
-            {/* Başlık */}
-            <View style={styles.header}>
-              <View style={[styles.igIconWrap, SHADOWS.glowPurple]}>
-                <HugeiconsIcon icon={InstagramIcon} size={36} color="#fff" />
-              </View>
-              <Text style={[styles.titleBold, { color: colors.textPrimary }]}>Instagram ile Giriş Yap</Text>
-              <Text style={[styles.subtitle, { color: colors.textMuted }]}>
-                Instagram'ın güvenli giriş sayfası açılacak. Şifren bize iletilmez.
-              </Text>
+            {/* GhostScore Branding */}
+            <View style={styles.branding}>
+              <Image source={GHOST_MASCOT} style={styles.mascot} resizeMode="contain" />
+              <Text style={[styles.appName, { color: colors.textPrimary }]}>GhostScore</Text>
+              <Text style={[styles.appTagline, { color: colors.textMuted }]}>Instagram hesabının gerçek yüzü</Text>
+            </View>
+
+            {/* Özellik pill'leri */}
+            <View style={[styles.featuresBox, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              {FEATURES.map((f, i) => (
+                <View
+                  key={f.label}
+                  style={[
+                    styles.featureRow,
+                    i < FEATURES.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.border },
+                  ]}
+                >
+                  <Text style={styles.featureEmoji}>{f.emoji}</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.featureLabel, { color: colors.textPrimary }]}>{f.label}</Text>
+                    <Text style={[styles.featureDesc, { color: colors.textMuted }]}>{f.desc}</Text>
+                  </View>
+                </View>
+              ))}
             </View>
 
             {/* Hata */}
@@ -289,13 +312,19 @@ const styles = StyleSheet.create({
   content:   { width: '100%' },
   footer:    { paddingBottom: SPACING.lg, alignItems: 'center', paddingHorizontal: SPACING.lg },
 
-  header: { alignItems: 'center', marginBottom: SPACING.xl },
-  igIconWrap: {
-    width: 72, height: 72, borderRadius: 20,
-    backgroundColor: IG_COLOR,
-    alignItems: 'center', justifyContent: 'center',
-    marginBottom: SPACING.md, ...GLOSS,
-  },
+  // Branding
+  branding:   { alignItems: 'center', marginBottom: SPACING.lg },
+  mascot:     { width: 90, height: 90, marginBottom: SPACING.sm },
+  appName:    { fontSize: 28, fontWeight: '800', letterSpacing: -0.5 },
+  appTagline: { fontSize: 13, marginTop: 4 },
+
+  // Features
+  featuresBox: { borderRadius: RADIUS.lg, borderWidth: 1, overflow: 'hidden', marginBottom: SPACING.lg },
+  featureRow:  { flexDirection: 'row', alignItems: 'center', gap: SPACING.md, paddingVertical: 12, paddingHorizontal: SPACING.md },
+  featureEmoji:{ fontSize: 22, width: 30, textAlign: 'center' },
+  featureLabel:{ fontSize: 14, fontWeight: '700' },
+  featureDesc: { fontSize: 12, marginTop: 1 },
+
   titleBold: { fontSize: 22, fontWeight: '800', marginBottom: SPACING.xs, textAlign: 'center' },
   subtitle:  { fontSize: 14, textAlign: 'center', lineHeight: 20 },
 
