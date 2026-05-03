@@ -30,12 +30,12 @@ const DEV_MODE_KEY = 'gs_dev_mode';
 const IG_LOGIN_URL = 'https://www.instagram.com/accounts/login/';
 const IG_HOME_URL  = 'https://www.instagram.com/';
 
-const GHOST_MASCOT = require('../../assets/main/Suspicious_Look.png');
+const GHOST_MASCOT = require('../../assets/main/Default_Pose.png');
 
 const FEATURES = [
-  { emoji: '👁',  label: 'Stalker Tespiti',      desc: 'Story\'ni gizlice izleyenleri bul' },
-  { emoji: '👻', label: 'Hayalet Takipçiler',    desc: 'Hiç etkileşime girmeyenleri gör' },
-  { emoji: '🔔', label: 'Unfollower Alarmı',     desc: 'Seni takipten çıkanları takip et' },
+  { img: require('../../assets/main/Suspicious_Look.png'), label: 'Stalker Tespiti',   desc: "Story'ni gizlice izleyenleri bul" },
+  { img: require('../../assets/main/Top_View.png'),        label: 'Hayalet Takipçiler', desc: 'Hiç etkileşime girmeyenleri gör' },
+  { img: require('../../assets/main/Surprised_Ghost.png'), label: 'Unfollower Alarmı', desc: 'Seni takipten çıkanları takip et' },
 ];
 
 export default function LoginScreen({ navigation }) {
@@ -142,7 +142,7 @@ export default function LoginScreen({ navigation }) {
                     i < FEATURES.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.border },
                   ]}
                 >
-                  <Text style={styles.featureEmoji}>{f.emoji}</Text>
+                  <Image source={f.img} style={styles.featureIcon} resizeMode="contain" />
                   <View style={{ flex: 1 }}>
                     <Text style={[styles.featureLabel, { color: colors.textPrimary }]}>{f.label}</Text>
                     <Text style={[styles.featureDesc, { color: colors.textMuted }]}>{f.desc}</Text>
@@ -321,7 +321,7 @@ const styles = StyleSheet.create({
   // Features
   featuresBox: { borderRadius: RADIUS.lg, borderWidth: 1, overflow: 'hidden', marginBottom: SPACING.lg },
   featureRow:  { flexDirection: 'row', alignItems: 'center', gap: SPACING.md, paddingVertical: 12, paddingHorizontal: SPACING.md },
-  featureEmoji:{ fontSize: 22, width: 30, textAlign: 'center' },
+  featureIcon: { width: 42, height: 42 },
   featureLabel:{ fontSize: 14, fontWeight: '700' },
   featureDesc: { fontSize: 12, marginTop: 1 },
 
