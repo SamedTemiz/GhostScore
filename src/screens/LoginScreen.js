@@ -4,9 +4,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   View, Text, TouchableOpacity,
   StyleSheet, StatusBar, Modal, ScrollView,
-  ActivityIndicator, Image,
+  ActivityIndicator, Image, Animated,
 } from 'react-native';
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { WebView } from 'react-native-webview';
 import CookieManager from '@react-native-cookies/cookies';
@@ -51,6 +51,18 @@ export default function LoginScreen({ navigation }) {
 
   const tapCount = useRef(0);
   const tapTimer = useRef(null);
+  const floatAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(floatAnim, { toValue: -10, duration: 1400, useNativeDriver: true }),
+        Animated.timing(floatAnim, { toValue: 0,   duration: 1400, useNativeDriver: true }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, []);
 
   useEffect(() => {
     AsyncStorage.getItem(DEV_MODE_KEY).then(v => { if (v === '1') setDevMode(true); });
@@ -127,7 +139,7 @@ export default function LoginScreen({ navigation }) {
 
             {/* GhostScore Branding */}
             <View style={styles.branding}>
-              <Image source={GHOST_MASCOT} style={styles.mascot} resizeMode="contain" />
+              <Animated.Image source={GHOST_MASCOT} style={[styles.mascot, { transform: [{ translateY: floatAnim }] }]} resizeMode="contain" />
               <Text style={[styles.appName, { color: colors.textPrimary }]}>GhostScore</Text>
               <Text style={[styles.appTagline, { color: colors.textMuted }]}>Instagram hesabının gerçek yüzü</Text>
             </View>
