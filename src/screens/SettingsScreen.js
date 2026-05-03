@@ -140,22 +140,8 @@ export default function SettingsScreen({ navigation }) {
             icon={Logout02Icon}
             label="Çıkış Yap"
             colors={colors}
-            danger
             onPress={() => setLogoutConfirm(true)}
-            right={<HugeiconsIcon icon={ArrowRight01Icon} size={18} color={colors.danger} />}
-          />
-          <SettingRow
-            icon={Delete02Icon}
-            label="Hesabı Sil"
-            subtitle="Tüm verilerini kalıcı olarak sil"
-            colors={colors}
-            danger
-            onPress={deletingAccount ? null : () => setDeleteConfirm(true)}
-            right={
-              deletingAccount
-                ? <ActivityIndicator size="small" color={colors.danger} />
-                : <HugeiconsIcon icon={ArrowRight01Icon} size={18} color={colors.danger} />
-            }
+            right={<HugeiconsIcon icon={ArrowRight01Icon} size={18} color={colors.textMuted} />}
           />
         </View>
 
@@ -174,6 +160,23 @@ export default function SettingsScreen({ navigation }) {
         <Text style={[styles.footer, { color: colors.textMuted }]}>
           Bu uygulama Instagram ile resmi olarak bağlantılı değildir.
         </Text>
+
+        {/* Hesabı Sil — en altta, ayrı kart */}
+        <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.danger + '40', marginTop: SPACING.sm }]}>
+          <SettingRow
+            icon={Delete02Icon}
+            label="Hesabı Sil"
+            subtitle="Tüm verilerini kalıcı olarak sil"
+            colors={colors}
+            danger
+            onPress={deletingAccount ? null : () => setDeleteConfirm(true)}
+            right={
+              deletingAccount
+                ? <ActivityIndicator size="small" color={colors.danger} />
+                : <HugeiconsIcon icon={ArrowRight01Icon} size={18} color={colors.danger} />
+            }
+          />
+        </View>
 
       </ScrollView>
 
